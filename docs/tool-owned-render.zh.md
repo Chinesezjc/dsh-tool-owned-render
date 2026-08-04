@@ -46,7 +46,7 @@ Block    — one tool call's whole card
 - **error → 红色。** 工具报告了 `isError`。
 - **running → 蓝色**（`ongoing` 的 pixel-chase 点）。
 - **bash 可以进一步细分**，因为它有其他工具没有的 exit code：`timedOut`/`aborted` → **琥珀色（warn）**（harness 因为限额或取消而终止了它——命令没有选择余地）；不是来自我们的 timeout/abort 的终止 `signal` → **红色**（崩溃的 `SIGSEGV`，或外部的 `SIGTERM`；我们为超时发出的 `SIGTERM` 已经被琥珀色规则覆盖，所以能走到这里的 signal 都来自外部）；其余情况由 exit code 决定。
-- **灰色（neutral）** 只用在结果确实无法观测的场合——一个 REPL turn（`>>> 2+2`）没有 shell exit code，一次多命令调用（`echo a; false; echo b`）里非末尾命令也没有逐命令状态：harness 每次调用只观测到一个 exit code，而「一次调用跑多条命令且带逐命令状态」在任何地方都不是现有能力。两者都是灰色。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。因此逐 Turn 灯只出现在 harness 能观测到该 Turn 自身结果的场合——单命令调用，或交互式会话的一轮；采集逐命令状态（执行器变更）是推迟的能力，在类型中预留，它会把多命令调用的中间 Turn 从灰色升级为有灯。
+- **灰色（neutral）** 只用在结果确实无法观测的场合——一个 REPL turn（`>>> 2+2`）没有 shell exit code，一次多命令调用（`echo a; false; echo b`）里非末尾命令也没有逐命令状态：harness 每次调用只观测到一个 exit code，而「一次调用跑多条命令且带逐命令状态」在任何地方都不是现有能力。两者都是灰色。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。因此逐 Turn 灯只出现在 harness 能观测到该 Turn 自身结果的场合——单命令调用，或交互式会话的一轮。采集逐命令状态（执行器变更）被推迟，类型中不放任何字段——构建时作为与消费者一同落地的编译破坏性扩展，与 render kind 和递归同一纪律——它会把多命令调用的中间 Turn 从灰色升级为有灯。
 
 `warn`（琥珀色）是相对当前 `StateDot` 三状态用法唯一新增的状态；对应的 token 已经存在（[StateDot.module.css](../../../../packages/client/ui-primitives/src/StateDot.module.css)）。信号归因只使用 harness 自己的信号，绝不猜测信号由谁发出，因为操作系统不报告发送方。两个琥珀色输入按通道分开：被中止的调用可以从持久化的流中重建——客户端为中途消失的调用推导出 `error.code: 'interrupted'` result node（今天行的 `stopped` 状态的来源；该推导是事件流的纯函数，在回放路径上也运行，history-fold.ts），状态灯把这一信号映射为琥珀色；`timedOut` 住在 bash 的 result value 里，presenter 永远看不到它（`presentationMeta` 只在成功路径上运行），所以它必须由新的 bash `presentationMeta` 承载，琥珀灯才能在回放中存活。
 
@@ -93,7 +93,7 @@ Block    — one tool call's whole card
 | 工具 | IN 渲染 | OUT 渲染 | 状态灯 |
 |---|---|---|---|
 | bash（1 条命令） | 提示符行：cwd + command | 输出文本（无行号） | exit/signal/timeout/abort |
-| bash（N 条命令） | 每条命令一个 Turn | 每条命令各自的输出 | harness 能观测到每条命令状态时逐 Turn，否则灰色 |
+| bash（N 条命令） | harness 以独立执行暴露每条命令时（交互式轮次）每条一个 Turn；单次调用里拼接的命令保持一个 Turn | 该 Turn 的输出，或调用合并后的输出 | harness 能观测到每次执行的状态时逐 Turn，否则灰色 |
 | bash（REPL） | 每轮 stdin 一个 Turn，`>>>` 提示符 | 该轮的输出 | 中间轮灰色，活动轮蓝色 |
 | read | 路径 + 行范围 | 带行号的文件行 | done/error |
 | write | `path` | 应用后的 diff，真实的新行号 | done/error |
@@ -105,7 +105,7 @@ Block    — one tool call's whole card
 
 来源列表和抓取正文是一等的多 OUT segment 用例，取代今天「一张卡片外加一个兄弟 div」的做法。web 来源渲染为真正的仅 `http(s)` 链接（复用 `WebBlock` 的 `SafeLink` 安全处理）。
 
-两种展示形状明确地存活进骨架。write/edit 保留运行中的 call-time diff——调用进行中，预期变更作为 OUT segment 渲染，结算时由应用后的结果 diff 替换（今天的 `diffCardModel` 行为）——因此挂起中的 diff 不会因为结果导向的表格而丢失。代码变体的程序体（`run_code`、`cordis_mount`）今天走 `CodeBlock` + shiki，将作为 IN segment 以 `text` 形态渲染（等宽字体 + `lang` 驱动的高亮——不带行号，遵循 IN segment 永不带行号的规则），代码展示在迁移中得以保留。
+两种展示形状明确地存活进骨架。write/edit 保留运行中的 call-time diff——调用进行中，预期变更作为 OUT segment 渲染，结算时由应用后的结果 diff 替换（今天的 `diffCardModel` 行为）——因此挂起中的 diff 不会因为结果导向的表格而丢失。代码变体的程序体（`run_code`、`cordis_mount`）今天走 `CodeBlock` + shiki，将作为 IN segment 以 `text` 形态渲染（等宽字体，`lang`——`lines` kind 今天携带的同一个 segment 载荷字段，在 PR 1a 类型中定义——驱动高亮；不带行号，遵循 IN segment 永不带行号的规则），代码展示在迁移中得以保留。
 
 ### 数据来源：可从文本重建的那条边界得以保留
 
@@ -115,7 +115,7 @@ Block    — one tool call's whole card
 
 ### 可扩展的 render kind 与自定义工具——预留，大部分推迟
 
-`Segment.render` 是一个可扩展的 render kind tagged union。设想的完整词汇表是 `prompt` / `text` / `lines` / `diff` / `kv` / `link` / `json` / `table` / `image` / `notice`，使得一个 segment 的载荷由数据描述，而不是由每个工具各自的组件描述。这正是让自定义工具以三档接入骨架的机制：
+`Segment.render` 是一个 render kind tagged union。设想的完整词汇表是 `prompt` / `text` / `lines` / `diff` / `kv` / `link` / `json` / `table` / `image` / `notice`，使得一个 segment 的载荷由数据描述，而不是由每个工具各自的组件描述。这正是让自定义工具以三档接入骨架的机制：
 
 1. **兜底（零代码）。** 没有 presenter 的工具落到 generic：IN = args JSON、OUT = 结果文本，作为普通 segment 渲染——于是它免费获得状态灯、复制、滚动、以及（PR 3 落地后的）预览面板，而不是今天那个功能贫瘠的 `ioCard`。
 2. **声明式（`presentationMeta` 返回一份 render kind 描述，不写 React）。** 工具通过选取 render kind（比如 `kv` + `text` + `link`）来描述自己的 IN/OUT segment；骨架从共享词汇表把它们画出来。内置工具就是同一套机制——每个只是一组固定的 kind 选择。
@@ -125,7 +125,7 @@ Block    — one tool call's whole card
 
 同样，原型演练过的运行时状态形态——流式追加（蓝灯、OUT 增长）、后台任务（taskId + 一个 `notice` 提示轮询）、中途取消（琥珀色 + 部分输出）、sandbox denial（红色 + `notice`）、需审批的工具（一个 `notice` + 批准/拒绝控件）、以及纯 IN 副作用 Turn（一个只有 IN、完全没有 OUT segment 的 Turn，区别于空 OUT）——都是 seam 必须不阻断的真实形态，但它们的渲染推迟到添加各自行为的 PR。第一个 PR 只保证类型和 seam 不挡住它们。
 
-### 递归推迟（只留类型接入点）
+### 递归整体推迟
 
 `Turn`/`Block` 的递归——一组命令折叠成一个可展开单元并带一个聚合状态灯——**整体推迟，类型中不放任何字段**：没有聚合规则，没有递归渲染器，没有分组摘要。预声明一个没有消费者的递归字段，会让生产方构造出客户端静默忽略的类型合法值——正是封闭联合规则要拒绝的失败模式——所以分组功能在真正构建时，作为与它的渲染器一同落地的编译破坏性类型扩展（不声称「不需要第二次数据形状迁移」）。现在就实现它，需要定义四种灯色之间的状态聚合、一个 bash 本身并不提供的分组标题来源，以及一份本地化的折叠摘要——而当前的驱动需求（多命令、交互式）都不需要这些。
 

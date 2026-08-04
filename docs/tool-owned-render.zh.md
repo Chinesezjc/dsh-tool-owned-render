@@ -73,13 +73,13 @@ Block    — one tool call's whole card
 
 超过高度上限的 Segment 会变成固定高度的内部滚动区。在其中，**行号随 body 一起滚动**（它们属于内容）；**状态灯不滚动**（它属于该 Turn 的状态）。短的 IN segment 只有一行、不会滚动，所以状态灯自然是静止的；但大的 IN（heredoc 脚本、大段 `write` content、大 args JSON）*确实*会滚动，那时状态灯必须**钉在该 segment 不滚动的外壳上**（锚定左上角，位于滚动区之外），从而在输入内容在下方滚动时保持可见。过长的单行以水平滚动区横向溢出；缩进属于内容，绝不折叠。
 
-滚动条是**自绘的 overlay**，不是浏览器原生滚动条：原生滚动条被隐藏（`scrollbar-width: none` + `::-webkit-scrollbar { display:none }`），改为按卡片的设计语言绘制一个 DOM 滑块（细、圆角、半透明、hover 变亮）。这延续、而非违背两个已实现的滚动条决策——主题化滚动条与预留 gutter（[2026-07-28-themed-scrollbars-and-reserved-gutter.md](../../implemented/bug-fix/2026-07-28-themed-scrollbars-and-reserved-gutter.md)）和指针显示（[2026-08-04-pointer-revealed-sidebar-scrollbars.md](../../implemented/feature/2026-08-04-pointer-revealed-sidebar-scrollbars.md)）：逐 segment 的 overlay 在 segment 作用域复用它们的交互显示与主题化滑块规则。它在滚动过程中以及 segment hover 时显示，滚动停止约 900 ms 后淡出；垂直和水平的行为一致。定位使用 `transform`（合成层），更新经 `requestAnimationFrame` 节流并把读与写分离，因此快速滚动不会造成布局抖动。**实现说明：** 交付的组件应优先采用一个有维护的 overlay-scrollbar 依赖（依照 [dependencies-over-hand-rolling 政策](../../../../.agents/notes/implemented/process/2026-07-26-dependencies-over-hand-rolling.md)），而不是这个手写滑块——手写滑块的边界情况很多（触控板惯性、缩放、RTL、a11y）；原型只作为行为/样式参考。
+滚动条复用仓库的主题化滚动条机制，而不是自绘 overlay。原生滚动条保留；它们通过 ui-theme 的 `--dsh-scrollbar-thumb`/`-hover` 间接层上皮（WebKit 伪元素与 Firefox `scrollbar-color` 两条路径），而一个 segment 只在滚动或被 hover 时显示它的滚动条——按 [pointer-revealed-scrollbars 笔记](../../implemented/feature/2026-08-04-pointer-revealed-sidebar-scrollbars.md) 给侧边栏所做的那样重绑那对 token（活跃时绑到 l2 对、静止时绑到 `transparent`），带一小段 linger 尾巴。预留 gutter（[2026-07-28-themed-scrollbars-and-reserved-gutter.md](../../implemented/bug-fix/2026-07-28-themed-scrollbars-and-reserved-gutter.md)）使滑块出现时 body 起始线不移动，因此不使用会让该预留塌陷的 `scrollbar-width: none`。这刻意**不是** pointer-revealed 笔记权衡后否决的自绘 overlay——那条路要付出命中测试、拖拽、滚轮、惯性、以及两套配色的 hover 状态的成本，只换来外观收益；复用 token 间接层让显示免费获得，并继承了升高表面的重绑契约。过长的单行以同样方式横向溢出，横向滚动条遵循同样的显示规则。
 
 ### 逐 segment 控件：本期复制，展开后续
 
 每个 Segment 都带自己的控件组，锚定在 segment 外壳的右上角（即不滚动的包裹层，因此内容滚动时它保持不动），在 segment hover、键盘焦点（`:focus-within`）和触摸时显示，且每个控件本身都可键盘和触摸操作。复制是**逐 segment 的**（IN 和 OUT 各有一个）——复制命令和复制输出是两个独立动作；Block 没有整卡复制按钮。**在骨架 PR 中控件组只有复制。**
 
-`⤢` 展开按钮以及它打开的预览面板**拆分成各自的后续 PR**（见「迁移形态」）。这里为完整设计一并描述：展开会在对话右侧打开一个**可调宽的侧边预览面板**，而不是全屏接管。该面板是一个通用预览容器——用与内联卡片相同的 Segment 渲染来展示该 segment 的内容（今天是 bash segment；以后可以是 code preview 或其他 kind），带工具/IN 上下文作为头部、行号列、overlay 滚动条。宽度可通过分隔条手柄拖拽调节。面板是**单例**：在面板已打开时点击另一个 segment 的 `⤢`，会就地**替换**面板内容，而不是叠加或打开第二个面板。面板自身可以**再展开一级到真正的全屏**（全屏成为面板的二级动作，而非首要动作）；在那一级底层页面被 scroll-lock，面板自身的滚动仍用同一套自绘 overlay。Escape 或关闭控件按一级收起（全屏 → 面板 → 关闭）。这是今天右侧 `DetailsPanel` Output 面板演进为可拖拽、点击替换的通用容器。**实现说明：** 任何 code/语法渲染复用仓库已有的 shiki 集成（如同 `CodeBlock` 那样），而不是手写 tokenizer。
+`⤢` 展开按钮以及它打开的预览面板**拆分成各自的后续 PR**（见「迁移形态」）。这里为完整设计一并描述：展开会在对话右侧打开一个**可调宽的侧边预览面板**，而不是全屏接管。该面板是一个通用预览容器——用与内联卡片相同的 Segment 渲染来展示该 segment 的内容（今天是 bash segment；以后可以是 code preview 或其他 kind），带工具/IN 上下文作为头部、行号列、主题化滚动条。宽度可通过分隔条手柄拖拽调节。面板是**单例**：在面板已打开时点击另一个 segment 的 `⤢`，会就地**替换**面板内容，而不是叠加或打开第二个面板。面板自身可以**再展开一级到真正的全屏**（全屏成为面板的二级动作，而非首要动作）；在那一级底层页面被 scroll-lock，面板自身的滚动仍用同一套主题化滚动条。Escape 或关闭控件按一级收起（全屏 → 面板 → 关闭）。这是今天右侧 `DetailsPanel` Output 面板演进为可拖拽、点击替换的通用容器。**实现说明：** 任何 code/语法渲染复用仓库已有的 shiki 集成（如同 `CodeBlock` 那样），而不是手写 tokenizer。
 
 ### 空的 / 无输入的 segment 对称折叠
 
@@ -134,7 +134,7 @@ Block    — one tool call's whole card
 **PR 1 — 骨架 + bash + 一个工具（验证抽象）。** 交付为一个四层 PR 栈（每步基于上一步，用官方 stacked-PR 机制），因为这些步骤有硬依赖顺序、每步是单一关注点、约 400–700 行：
 
 1. **类型 + presentation 契约。** 共享的 `Block`/`Turn`/`Segment` 类型和扩展后的 `ToolResultView`，含一个只装已实现 kind（`prompt`/`text`/`lines`/`diff`）的封闭 render kind union，放在 `@deepseek-ai/dsh-tools`——即已经拥有 `ToolResultView` 和 `presentationMeta`、且被值的生产方（`bash`、`read` 等）依赖的中性工具契约层。React 叶子包 `ui-primitives` 只拥有渲染这些类型的组件，绝不拥有类型本身，因此没有生产方需要反向依赖客户端叶子包，也不存在「唯一一套类型」的第二份声明。纯类型；只有 unit 测试——此时还没有组装后 transcript 快照，因为在 1c 之前没有工具产出它。
-2. **骨架组件**（`ui-primitives` 中，即五张卡片一直预期存在的那个 `CardShell`）：统一的状态灯推导、自适应 gutter、逐 segment 滚动 + overlay 滚动条、逐 segment 复制（控件组**只带复制**）。组件 unit + 渲染快照。
+2. **骨架组件**（`ui-primitives` 中，即五张卡片一直预期存在的那个 `CardShell`）：统一的状态灯推导、自适应 gutter、逐 segment 滚动 + 主题化滚动条、逐 segment 复制（控件组**只带复制**）。组件 unit + 渲染快照。
 3. **bash** 迁移，包括交互式/多命令的 Turn，以及一个承载结构化轮次的新 bash `presentationMeta`。第一个真实工具——需要真实工具数据的 snapshot/e2e 覆盖落在这里。
 4. **再迁移一个工具**（read 或 search），在批量迁移前证明这个抽象确实是工具中立的，而不是围绕 bash 成形的；带它自己的 snapshot/e2e。
 
@@ -142,7 +142,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 **PR 2 — 迁移其余工具（优先级高于预览面板）。** 抽象验证过后，把其余所有工具（write/edit、grep/glob、web_search/web_fetch，以及代码变体 `run_code`/`cordis_mount`）迁进骨架（generic 兜底路径随 PR 1 的骨架一起交付——PR 2 下线 `ToolRow`/`DetailsPanel` 里旧的 `ioCard`/扁平文本兜底分支）；收敛 `ToolRow`/`DetailsPanel` 中的多分支 wire→props 分发；下线已不再使用的各 block `.block` 几何、五个 `*-card-model`、以及重复的截断/复制代码；统一 `CHAT_*` 常量；把 i18n 收进一个 labels 表层。这一步承载产品价值（所有卡片统一到一套骨架），所以排在预览面板增强之前。单个约 8–10k 行的 PR 无法 review 且风险集中，因此 PR 2 用仓库的官方 stacked-PR 机制交付为一叠更小的按工具组拆分的 PR（例如 write/edit；grep/glob；web），每个约 500–800 行。
 
-**PR 3 — 侧边预览面板。** 可调宽的侧边预览面板*以及*打开它的 `⤢` 展开按钮，是一个独立的、优先级更低的增强，放在各自的 PR、依赖骨架 PR。它在一个右侧停靠、可拖拽调宽、单例（点击替换）的容器里复用骨架的 Segment 渲染，演进自今天的 `DetailsPanel` Output 面板；二级展开把面板带到真正的全屏（scroll-lock、overlay 滚动条）。骨架 PR 既不渲染也不引用它；展开按钮只在这个 PR 里出现。
+**PR 3 — 侧边预览面板。** 可调宽的侧边预览面板*以及*打开它的 `⤢` 展开按钮，是一个独立的、优先级更低的增强，放在各自的 PR、依赖骨架 PR。它在一个右侧停靠、可拖拽调宽、单例（点击替换）的容器里复用骨架的 Segment 渲染，演进自今天的 `DetailsPanel` Output 面板；二级展开把面板带到真正的全屏（scroll-lock、主题化滚动条）。骨架 PR 既不渲染也不引用它；展开按钮只在这个 PR 里出现。
 
 **后续** — 推迟的扩展点（声明式 render kind 第 2 档、非文件 render kind `kv`/`link`/`json`/`table`/`image`/`notice`、第 3 档自定义渲染器、`Turn`/`Block` 递归，以及各行为对应的状态形态）在其服务的行为被构建时，作为各自的 PR 落地。
 
@@ -162,7 +162,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 - **展开做成居中 modal / 全屏接管 / 「显示另外 N 行」按钮。** 否决，改为可调宽的右侧停靠侧边预览面板（单例、点击替换、通用容器，带一个可选的二级展开到真正全屏）加逐 segment 滚动（应对快速浏览）；面板在预览时保持对话可见，可推广到 code preview 和其他 kind，并复用现有 `DetailsPanel` 的位置，而不是把全视口接管作为首要动作。
 
-- **用 `::-webkit-scrollbar` 给原生滚动条设样式。** 否决：只在 webkit 生效，在 headless/其他引擎中缺失，会占用宽度，而且无法与卡片设计保持一致。自绘 overlay 与引擎无关——不过交付版本应使用有维护的依赖，而不是原型里的那个手写滑块。
+- **自绘 overlay 滚动条（隐藏原生、画一个 DOM 滑块）。** 否决——与 [pointer-revealed-scrollbars 笔记](../../implemented/feature/2026-08-04-pointer-revealed-sidebar-scrollbars.md) 已做的判断一致：它要付出命中测试、拖拽、滚轮、惯性、以及两套配色 hover 状态的成本，只换外观收益，而且 `scrollbar-width: none` 会让预留 gutter 塌陷。骨架改为复用 ui-theme 的主题化滚动条 token 间接层和预留 gutter，与已交付方案一致。
 
 - **现在就实现递归。** 推迟而非否决：分组功能在构建时作为与渲染器一同落地的编译破坏性类型扩展——不预声明后门字段，遵循封闭联合纪律。
 
@@ -180,7 +180,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 - **范围。** 这会触及 presentation 契约（[presentation.ts](../../../../packages/core/tools/src/presentation.ts)）、card-model 推导层、`ui-primitives`，以及 host→client 的视图流。它被分阶段执行（现在只做 bash + 一个工具），以约束第一个 PR 的规模，同时验证通用性。
 - **wire 数据不可信。** `sessions.schema.ts` 只校验 `for` 和 `card: string`；现有的每个 card-model 都会再做一次防御性收窄。统一后的 wire→props 层**必须**保留逐工具的收窄，否则一个畸形载荷会让某一行或详情面板崩溃。
 - **回放纯度。** presenter 同时运行在实时路径和回放路径上，必须保持为 args（+ result meta）的纯函数，不做 I/O、不读时钟、不读会话状态（[adding-a-tool.md](../../../../docs/cookbook/adding-a-tool.md)）。状态灯推导和 segment 构造器必须遵守这一点。
-- **手写的 UI 机制。** 原型手绘了 overlay 滚动条、手写了高亮的 tokenizer；交付的组件必须改用有维护的滚动条依赖（依照 [dependencies-over-hand-rolling 政策](../../../../.agents/notes/implemented/process/2026-07-26-dependencies-over-hand-rolling.md)）和仓库自己的 shiki 集成，否则就会重新引入本文所警告的那些边界情况负担。
+- **手写的 UI 机制。** 原型手绘了一个 overlay 滚动条、手写了高亮的 tokenizer；交付的组件改为复用 ui-theme 的主题化滚动条 token 间接层（而非手绘滑块）和仓库自己的 shiki 集成，从而不会重新引入本文所警告的边界情况负担（命中测试、拖拽、惯性、两套配色）。
 - **放弃了什么。** 状态统一意味着今天在卡片内*不*显示状态的那五张卡片会获得一个状态灯；对确实无法观测的结果，诚实的取值是灰色——抽象不得为它无法观测的东西制造出绿色的「成功」（这与状态灯和 gutter 共同遵循的「可观测才显示，否则省略」原则一致）。
 - **AGENTS.md 已经过时。** [AGENTS.md:116](../../../../AGENTS.md#L116) 仍然列着三种卡片类型；render-intent 联合类型已经有六种。这项工作应在同一个 PR 中更新那一行以及 render-intent 的设计说明。
 

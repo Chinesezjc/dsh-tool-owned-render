@@ -12,7 +12,7 @@ web UI 里每一张工具结果卡片都是一个各自独立的 primitive：自
 
 - **「输入」没有共享表示。** 只有 `terminal`（command/cwd/description）和 `diff`（`FileDiff[]`）声明了结构化的调用视图。`read`、`grep`、`glob`、`web_search`、`web_fetch` 把整个多字段输入压成一个英文 `title` 字符串加一个 `rawInput` 字符串；grep 的 `path`/`include` 只以 `"Grep X in Y (Z)"` 的子串形式留存。今天唯一真正渲染出 IN/OUT segment 对的地方是通用兜底的 `div.ioCard`（[ToolRow.tsx:294](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L294)），它硬编码在 `ToolRow` 内部，只支持恰好两个 segment，既不能嵌套也不能复用。
 
-- **结构靠约定重复，而不是靠代码共享。** 不存在 `CardShell`（`grep -rn CardShell` 的结果是 0）。五个 CSS module 各自声明一个 `.block` 根节点，重复同样的四条属性，并各自定义自己的 `--dsl-<name>-radius: 12px` / `--dsl-<name>-line-height: 22px`。`headTailCap` 和 `useCopyFeedback` 各自恰好只有两个调用方；`ReadBlock` 和 `DiffBlock` 内联了完全相同的 head/tail 算术和完全相同的 1000 ms 复制超时，并硬编码中文字面量（`WebBlock` 两者都没有——它画出工具已经截断后的全部来源）。三个 `CHAT_*_MAX_LINES = 8` 常量重复着同一句「primitive 默认值的一半」注释，而两处注释引用的 `CHAT_TERMINAL_MAX_LINES` 并不存在——终端行传的是 `maxLines={Infinity}`。wire→props 的分发是一条多分支链，在 [ToolRow.tsx:258](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L258) 以嵌套三元写了一遍，又在 [DetailsPanel.tsx:150](../../../../packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx#L150) 以 if/return 链、不同的顺序写了一遍。
+- **结构靠约定重复，而不是靠代码共享。** 不存在 `CardShell`（`grep -rn CardShell` 的结果是 0）。五个 CSS module 各自声明一个 `.block` 根节点，重复同样的四条属性，并各自定义自己的 `--dsl-<name>-radius: 12px` 和 `--dsl-<name>-line-height: 22px`（`WebBlock` 只声明了 radius，行高是裸值）。`headTailCap` 和 `useCopyFeedback` 各自恰好只有两个调用方；`ReadBlock` 和 `DiffBlock` 内联了完全相同的 head/tail 算术和完全相同的 1000 ms 复制超时，并硬编码中文字面量（`WebBlock` 两者都没有——它画出工具已经截断后的全部来源）。三个 `CHAT_*_MAX_LINES = 8` 常量重复着同一句「primitive 自己的默认值的一半」注释，而两处注释引用的 `CHAT_TERMINAL_MAX_LINES` 并不存在——终端行传的是 `maxLines={Infinity}`。wire→props 的分发是一条多分支链，在 [ToolRow.tsx:258](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L258) 以嵌套三元写了一遍，又在 [DetailsPanel.tsx:150](../../../../packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx#L150) 以 if/return 链、不同的顺序写了一遍。
 
 - **i18n 不对称。** 只有 `TerminalBlock` 具备完整的 `TerminalBlockLabels` 表层；另外四张卡片内联中文字面量——[ui-primitives/README.md](../../../../packages/client/ui-primitives/README.md) 只记录了 `WebBlock` 的缺口，另外三张未被记录。
 
@@ -105,7 +105,7 @@ Block    — one tool call's whole card
 
 来源列表和抓取正文是一等的多 OUT segment 用例，取代今天「一张卡片外加一个兄弟 div」的做法。web 来源渲染为真正的仅 `http(s)` 链接（复用 `WebBlock` 的 `SafeLink` 安全处理）。
 
-两种展示形状明确地存活进骨架。write/edit 保留运行中的 call-time diff——今天的 `diffCardModel` 在调用进行中显示预期变更、结算后显示应用后的 hunk——因此挂起中的 diff 不会因为结果导向的表格而丢失。代码变体的程序体（`run_code`、`cordis_mount`）今天走 `CodeBlock` + shiki，将作为骨架的代码 segment 通过同一套 shiki 集成渲染，代码展示在迁移中得以保留。
+两种展示形状明确地存活进骨架。write/edit 保留运行中的 call-time diff——调用进行中，预期变更作为 OUT segment 渲染，结算时由应用后的结果 diff 替换（今天的 `diffCardModel` 行为）——因此挂起中的 diff 不会因为结果导向的表格而丢失。代码变体的程序体（`run_code`、`cordis_mount`）今天走 `CodeBlock` + shiki，将作为 `lines` segment（带行号，`lang` 驱动同一套 shiki 集成）渲染，代码展示在迁移中得以保留。
 
 ### 数据来源：可从文本重建的那条边界得以保留
 
@@ -121,7 +121,7 @@ Block    — one tool call's whole card
 2. **声明式（`presentationMeta` 返回一份 render kind 描述，不写 React）。** 工具通过选取 render kind（比如 `kv` + `text` + `link`）来描述自己的 IN/OUT segment；骨架从共享词汇表把它们画出来。内置工具就是同一套机制——每个只是一组固定的 kind 选择。
 3. **自定义 React 渲染器。** 需要词汇表之外形状的工具，把自己的组件注册到现有的 `conversation.chat.toolview` slot 上，绕过骨架。这是词汇表之外形状的逃生阀——也是今天内置行的*主*路径（`bash`/`read`/`search`/`web`/`write`/`edit`/`ask_user_question`/`todo_write` 已经在按工具注册组件到这个 slot，`GenericToolCard` 是兜底），骨架 PR 会把它们迁移到共享的 render kind 上。
 
-**本 PR 的范围刻意收窄。** 只有第 1 档（兜底）和内置 bash/read/（再一个）实际用到的 render kind（`prompt`/`text`/`lines`/`diff`）现在交付。其余 kind（`kv`/`link`/`json`/`table`/`image`/`notice`）、作为公开契约的第 2 档声明式、以及第 3 档接线都**推迟——且不在类型中预声明**：render kind 联合遵循 render-intent 联合的封闭联合纪律（[render-intent-union 笔记](../../implemented/architecture/2026-07-02-tool-render-intent-union.md) 否决了 merge-extensible 联合，因为消费者静默丢弃的变体比封闭联合在 switch 处抛出的编译错误更糟）。每个 kind 随它的渲染器一起交付，新增一个是在骨架 kind switch 处的编译破坏性变更。现在设计好的只是扩展点本身——联合加上骨架的 kind switch——使新增 kind 不需要改数据形状；卡片级的 `ToolResultView` 联合按那篇笔记保持封闭，只有新的 segment 词汇表在这套纪律之下（它遇到未知 kind 时显式回退到 `text`，绝不静默）。原型验证了推迟的 kind 能在骨架内组合（一个自定义 `deploy` 工具用 `kv`+`text`+`link`；image、table、JSON 树作为 OUT kind），这是扩展点足够用的证据——而不是在本 PR 交付它们的承诺。
+**本 PR 的范围刻意收窄。** 只有第 1 档（兜底）和内置 bash/read/（再一个）实际用到的 render kind（`prompt`/`text`/`lines`/`diff`）现在交付。其余 kind（`kv`/`link`/`json`/`table`/`image`/`notice`）、作为公开契约的第 2 档声明式、以及第 3 档接线都**推迟——且不在类型中预声明**：render kind 联合遵循 render-intent 联合的封闭联合纪律（[render-intent-union 笔记](../../implemented/architecture/2026-07-02-tool-render-intent-union.md) 否决了 merge-extensible 联合，因为消费者静默丢弃的变体比封闭联合在 switch 处抛出的编译错误更糟）。每个 kind 随它的渲染器一起交付，新增一个是在骨架 kind switch 处的编译破坏性变更。现在设计好的只是扩展点本身——联合加上骨架的 kind switch——使新增 kind 不需要改数据形状；卡片级的 `ToolResultView` 联合按那篇笔记保持封闭，匹配不到任何已知 kind 的载荷显式退化为 `text`，绝不静默。原型验证了推迟的 kind 能在骨架内组合（一个自定义 `deploy` 工具用 `kv`+`text`+`link`；image、table、JSON 树作为 OUT kind），这是扩展点足够用的证据——而不是在本 PR 交付它们的承诺。
 
 同样，原型演练过的运行时状态形态——流式追加（蓝灯、OUT 增长）、后台任务（taskId + 一个 `notice` 提示轮询）、中途取消（琥珀色 + 部分输出）、sandbox denial（红色 + `notice`）、需审批的工具（一个 `notice` + 批准/拒绝控件）、以及纯 IN 副作用 Turn（一个只有 IN、完全没有 OUT segment 的 Turn，区别于空 OUT）——都是 seam 必须不阻断的真实形态，但它们的渲染推迟到添加各自行为的 PR。第一个 PR 只保证类型和 seam 不挡住它们。
 

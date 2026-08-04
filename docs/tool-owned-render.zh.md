@@ -8,13 +8,13 @@ Status: proposed
 
 web UI 里每一张工具结果卡片都是一个各自独立的 primitive：自己的数据形状、自己的 CSS 几何、以及在一条人工维护的分发链里自己的一处分支。一共六张——`TerminalBlock`、`ReadBlock`、`DiffBlock`、`SearchBlock`、`WebBlock`、`CodeBlock`——它们在结构上没有任何一致之处：
 
-- **状态分散在六处以上。** 只有 `TerminalBlock` 在卡片*内部*带运行状态指示（[TerminalBlock.tsx:240](../../../packages/client/ui-primitives/src/TerminalBlock.tsx#L240) 处每行提示符一个 `StateDot`，外加一个表示 exit code/signal 的 `Pill`）。另外五张都没有；它们的成功、失败和被中止状态由外层行的 chrome 绘制。这些推导没有共同来源：`ToolRowState`（[tool-call-model.ts:23](../../../packages/client/ui-conversation/src/client/contract/tool-call-model.ts#L23)）、`terminalFailed`（[terminal-card-model.ts:71](../../../packages/client/ui-conversation/src/client/contract/terminal-card-model.ts#L71)，之所以需要它，是因为失败的 bash 命令结算时 `isError: false`）、`StateDotState` 的四个取值，以及 `TerminalBlock` 内部自己的 running/exit/signal 映射，是同一个概念的四套彼此独立的编码。
+- **状态分散在六处以上。** 只有 `TerminalBlock` 在卡片*内部*带运行状态指示（[TerminalBlock.tsx:240](../../../../packages/client/ui-primitives/src/TerminalBlock.tsx#L240) 处每行提示符一个 `StateDot`，外加一个表示 exit code/signal 的 `Pill`）。另外五张都没有；它们的成功、失败和被中止状态由外层行的 chrome 绘制。这些推导没有共同来源：`ToolRowState`（[tool-call-model.ts:23](../../../../packages/client/ui-conversation/src/client/contract/tool-call-model.ts#L23)）、`terminalFailed`（[terminal-card-model.ts:71](../../../../packages/client/ui-conversation/src/client/contract/terminal-card-model.ts#L71)，之所以需要它，是因为失败的 bash 命令结算时 `isError: false`）、`StateDotState` 的四个取值，以及 `TerminalBlock` 内部自己的 running/exit/signal 映射，是同一个概念的四套彼此独立的编码。
 
-- **「输入」没有共享表示。** 只有 `terminal`（command/cwd/description）和 `diff`（`FileDiff[]`）声明了结构化的调用视图。`read`、`grep`、`glob`、`web_search`、`web_fetch` 把整个多字段输入压成一个英文 `title` 字符串加一个 `rawInput` 字符串；grep 的 `path`/`include` 只以 `"Grep X in Y (Z)"` 的子串形式留存。今天唯一真正渲染出 IN/OUT segment 对的地方是通用兜底的 `div.ioCard`（[ToolRow.tsx:279](../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L279)），它硬编码在 `ToolRow` 内部，只支持恰好两个 segment，既不能嵌套也不能复用。
+- **「输入」没有共享表示。** 只有 `terminal`（command/cwd/description）和 `diff`（`FileDiff[]`）声明了结构化的调用视图。`read`、`grep`、`glob`、`web_search`、`web_fetch` 把整个多字段输入压成一个英文 `title` 字符串加一个 `rawInput` 字符串；grep 的 `path`/`include` 只以 `"Grep X in Y (Z)"` 的子串形式留存。今天唯一真正渲染出 IN/OUT segment 对的地方是通用兜底的 `div.ioCard`（[ToolRow.tsx:279](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L279)），它硬编码在 `ToolRow` 内部，只支持恰好两个 segment，既不能嵌套也不能复用。
 
-- **结构靠约定重复，而不是靠代码共享。** 不存在 `CardShell`（`grep -rn CardShell` 的结果是 0）。五个 CSS module 各自声明一个 `.block` 根节点，重复同样的四条属性，并各自定义自己的 `--dsl-<name>-radius: 12px` / `--dsl-<name>-line-height: 22px`。`headTailCap` 和 `useCopyFeedback` 各自恰好只有两个调用方；另外三个 block 内联了完全相同的算术和完全相同的 1000 ms 复制超时，并硬编码中文字面量。四个 `CHAT_*_MAX_LINES = 8` 常量重复着同一句「primitive 默认值的一半」注释。wire→props 的分发是一段六分支三元表达式，在 [ToolRow.tsx:240](../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L240) 写了一遍，又在 [DetailsPanel.tsx:150](../../../packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx#L150) 以不同的顺序写了一遍。
+- **结构靠约定重复，而不是靠代码共享。** 不存在 `CardShell`（`grep -rn CardShell` 的结果是 0）。五个 CSS module 各自声明一个 `.block` 根节点，重复同样的四条属性，并各自定义自己的 `--dsl-<name>-radius: 12px` / `--dsl-<name>-line-height: 22px`。`headTailCap` 和 `useCopyFeedback` 各自恰好只有两个调用方；另外三个 block 内联了完全相同的算术和完全相同的 1000 ms 复制超时，并硬编码中文字面量。四个 `CHAT_*_MAX_LINES = 8` 常量重复着同一句「primitive 默认值的一半」注释。wire→props 的分发是一段六分支三元表达式，在 [ToolRow.tsx:240](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L240) 写了一遍，又在 [DetailsPanel.tsx:150](../../../../packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx#L150) 以不同的顺序写了一遍。
 
-- **i18n 不对称。** 只有 `TerminalBlock` 具备完整的 `TerminalBlockLabels` 表层；另外四张内联中文字面量，这个缺口已记录在 [ui-primitives/README.md](../../../packages/client/ui-primitives/README.md) 中。
+- **i18n 不对称。** 只有 `TerminalBlock` 具备完整的 `TerminalBlockLabels` 表层；另外四张内联中文字面量，这个缺口已记录在 [ui-primitives/README.md](../../../../packages/client/ui-primitives/README.md) 中。
 
 直接触发这项工作的需求是交互式、多命令的 bash：一次 bash 调用会运行多条命令，而持久/交互式会话（REPL、PTY）会分多轮交换 stdin/stdout。两者都不适配 `TerminalBlock` 那种「一张卡片、一条命令横幅、一个输出框、一个状态」的扁平形状。只扩展 bash 会新增第七个各自独立的变体。交互式 bash 所需要的 List-of-Blocks 结构，正是能统一全部六张卡片的结构，因此这个基础值得为全部卡片一次性铺好，而不是只给 bash 单独加一个专用的多命令模式。
 
@@ -48,7 +48,7 @@ Block    整卡 — one tool call's whole card
 - **bash 可以进一步细分**，因为它有其他工具没有的 exit code：`timedOut`/`aborted` → **琥珀色（warn）**（harness 因为限额或取消而终止了它——命令没有选择余地）；不是来自我们的 timeout/abort 的终止 `signal` → **红色**（崩溃的 `SIGSEGV`，或外部的 `SIGTERM`；我们为超时发出的 `SIGTERM` 已经被琥珀色规则覆盖，所以能走到这里的 signal 都来自外部）；其余情况由 exit code 决定。
 - **灰色（neutral）** 只用在结果确实无法观测的场合——例如一个 REPL turn（`>>> 2+2`）没有 shell exit code，所以是灰色。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。
 
-`warn`（琥珀色）是相对当前 `StateDot` 三状态用法唯一新增的状态；对应的 token 已经存在（[StateDot.module.css](../../../packages/client/ui-primitives/src/StateDot.module.css)）。信号归因只使用 harness 自己的布尔量（`timedOut`/`aborted`），绝不猜测信号由谁发出，因为操作系统不报告发送方。
+`warn`（琥珀色）是相对当前 `StateDot` 三状态用法唯一新增的状态；对应的 token 已经存在（[StateDot.module.css](../../../../packages/client/ui-primitives/src/StateDot.module.css)）。信号归因只使用 harness 自己的布尔量（`timedOut`/`aborted`），绝不猜测信号由谁发出，因为操作系统不报告发送方。
 
 ### 卡片内部不放动词标签
 
@@ -105,9 +105,9 @@ Block    整卡 — one tool call's whole card
 
 ### 数据来源：可从文本重建的那条边界得以保留
 
-卡片之间真正的分界在于：结构化载荷能否从面向模型的结果文本无损重建。bash 可以（`command`/`cwd` 来自 args，exit 标记可从输出解析出来），这也是它成为今天唯一**不**使用 `presentationMeta` 的卡片的原因。read 的行号、search 的分组和 web 的来源在文本中是有损的，所以它们通过 `presentationMeta` 承载——那是唯一能在回放中留存的结构化通道，因为 `ToolEventView` 从不被持久化（[api/events.ts](../../../packages/host/apiproxy/src/api/events.ts)）。
+卡片之间真正的分界在于：结构化载荷能否从面向模型的结果文本无损重建。bash 可以（`command`/`cwd` 来自 args，exit 标记可从输出解析出来），这也是它成为今天唯一**不**使用 `presentationMeta` 的卡片的原因。read 的行号、search 的分组和 web 的来源在文本中是有损的，所以它们通过 `presentationMeta` 承载——那是唯一能在回放中留存的结构化通道，因为 `ToolEventView` 从不被持久化（[api/events.ts](../../../../packages/host/apiproxy/src/api/events.ts)）。
 
-统一抽象不改变这条边界。面向模型的文本仍然是扁平化的、仅供模型的编码；骨架的结构化 segment 由各工具已有的 `presentationMeta` 承载（bash 新增一个，取代它的 `parseExitStatus` 文本往返）。不变式 **Model-visible ⟺ logged**（[AGENTS.md:101](../../../AGENTS.md#L101)）得以保留：模型看到扁平文本，UI 看到结构化 meta，两者由同一次执行产出。
+统一抽象不改变这条边界。面向模型的文本仍然是扁平化的、仅供模型的编码；骨架的结构化 segment 由各工具已有的 `presentationMeta` 承载（bash 新增一个，取代它的 `parseExitStatus` 文本往返）。不变式 **Model-visible ⟺ logged**（[AGENTS.md:101](../../../../AGENTS.md#L101)）得以保留：模型看到扁平文本，UI 看到结构化 meta，两者由同一次执行产出。
 
 ### 可扩展的 render kind 与自定义工具——预留，大部分推迟
 
@@ -173,9 +173,9 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 ## Risks
 
-- **范围。** 这会触及 presentation 契约（[presentation.ts](../../../packages/core/tools/src/presentation.ts)）、card-model 推导层、`ui-primitives`，以及 host→client 的视图流。它被分阶段执行（现在只做 bash + 一个工具），以约束第一个 PR 的规模，同时验证通用性。
+- **范围。** 这会触及 presentation 契约（[presentation.ts](../../../../packages/core/tools/src/presentation.ts)）、card-model 推导层、`ui-primitives`，以及 host→client 的视图流。它被分阶段执行（现在只做 bash + 一个工具），以约束第一个 PR 的规模，同时验证通用性。
 - **wire 数据不可信。** `sessions.schema.ts` 只校验 `for` 和 `card: string`；现有的每个 card-model 都会再做一次防御性收窄。统一后的 wire→props 层**必须**保留逐工具的收窄，否则一个畸形载荷会让某一行或详情面板崩溃。
-- **回放纯度。** presenter 同时运行在实时路径和回放路径上，必须保持为 args（+ result meta）的纯函数，不做 I/O、不读时钟、不读会话状态（[adding-a-tool.md](../../../docs/cookbook/adding-a-tool.md)）。状态灯推导和 segment 构造器必须遵守这一点。
+- **回放纯度。** presenter 同时运行在实时路径和回放路径上，必须保持为 args（+ result meta）的纯函数，不做 I/O、不读时钟、不读会话状态（[adding-a-tool.md](../../../../docs/cookbook/adding-a-tool.md)）。状态灯推导和 segment 构造器必须遵守这一点。
 - **手写的 UI 机制。** 原型手绘了 overlay 滚动条、手写了高亮的 tokenizer；交付的组件必须改用有维护的滚动条依赖和仓库自己的 shiki 集成，否则就会重新引入本文所警告的那些边界情况负担。
 - **放弃了什么。** 状态统一意味着今天在卡片内*不*显示状态的那五张卡片会获得一个状态灯；对确实无法观测的结果，诚实的取值是灰色——抽象不得为它无法观测的东西制造出绿色的「成功」（这与状态灯和 gutter 共同遵循的「可观测才显示，否则省略」原则一致）。
-- **AGENTS.md 已经过时。** [AGENTS.md:117](../../../AGENTS.md#L117) 仍然列着三种卡片类型；render-intent 联合类型已经有六种。这项工作应在同一个 PR 中更新那一行以及 render-intent 的设计说明。
+- **AGENTS.md 已经过时。** [AGENTS.md:117](../../../../AGENTS.md#L117) 仍然列着三种卡片类型；render-intent 联合类型已经有六种。这项工作应在同一个 PR 中更新那一行以及 render-intent 的设计说明。

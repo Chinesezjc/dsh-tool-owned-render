@@ -73,7 +73,7 @@ Block    — one tool call's whole card
 
 超过高度上限的 Segment 会变成固定高度的内部滚动区。在其中，**行号随 body 一起滚动**（它们属于内容）；**状态灯不滚动**（它属于该 Turn 的状态）。短的 IN segment 只有一行、不会滚动，所以状态灯自然是静止的；但大的 IN（heredoc 脚本、大段 `write` content、大 args JSON）*确实*会滚动，那时状态灯必须**钉在该 segment 不滚动的外壳上**（锚定左上角，位于滚动区之外），从而在输入内容在下方滚动时保持可见。过长的单行以水平滚动区横向溢出；缩进属于内容，绝不折叠。
 
-滚动条是**自绘的 overlay**，不是浏览器原生滚动条：原生滚动条被隐藏（`scrollbar-width: none` + `::-webkit-scrollbar { display:none }`），改为按卡片的设计语言绘制一个 DOM 滑块（细、圆角、半透明、hover 变亮）。它在滚动过程中以及 segment hover 时显示，滚动停止约 900 ms 后淡出；垂直和水平的行为一致。定位使用 `transform`（合成层），更新经 `requestAnimationFrame` 节流并把读与写分离，因此快速滚动不会造成布局抖动。**实现说明：** 交付的组件应优先采用一个有维护的 overlay-scrollbar 依赖（依照 [dependencies-over-hand-rolling 政策](../../../../.agents/notes/implemented/process/2026-07-26-dependencies-over-hand-rolling.md)），而不是这个手写滑块——手写滑块的边界情况很多（触控板惯性、缩放、RTL、a11y）；原型只作为行为/样式参考。
+滚动条是**自绘的 overlay**，不是浏览器原生滚动条：原生滚动条被隐藏（`scrollbar-width: none` + `::-webkit-scrollbar { display:none }`），改为按卡片的设计语言绘制一个 DOM 滑块（细、圆角、半透明、hover 变亮）。这延续、而非违背两个已实现的滚动条决策——主题化滚动条与预留 gutter（[2026-07-28-themed-scrollbars-and-reserved-gutter.md](../../implemented/bug-fix/2026-07-28-themed-scrollbars-and-reserved-gutter.md)）和指针显示（[2026-08-04-pointer-revealed-sidebar-scrollbars.md](../../implemented/feature/2026-08-04-pointer-revealed-sidebar-scrollbars.md)）：逐 segment 的 overlay 在 segment 作用域复用它们的交互显示与主题化滑块规则。它在滚动过程中以及 segment hover 时显示，滚动停止约 900 ms 后淡出；垂直和水平的行为一致。定位使用 `transform`（合成层），更新经 `requestAnimationFrame` 节流并把读与写分离，因此快速滚动不会造成布局抖动。**实现说明：** 交付的组件应优先采用一个有维护的 overlay-scrollbar 依赖（依照 [dependencies-over-hand-rolling 政策](../../../../.agents/notes/implemented/process/2026-07-26-dependencies-over-hand-rolling.md)），而不是这个手写滑块——手写滑块的边界情况很多（触控板惯性、缩放、RTL、a11y）；原型只作为行为/样式参考。
 
 ### 逐 segment 控件：本期复制，展开后续
 
@@ -93,7 +93,7 @@ Block    — one tool call's whole card
 | 工具 | IN 渲染 | OUT 渲染 | 状态灯 |
 |---|---|---|---|
 | bash（1 条命令） | 提示符行：cwd + command | 输出文本（无行号） | exit/signal/timeout/abort |
-| bash（N 条命令） | harness 以独立执行暴露每条命令时（交互式轮次）每条一个 Turn；单次调用里拼接的命令保持一个 Turn | 该 Turn 的输出，或调用合并后的输出 | harness 能观测到每次执行的状态时逐 Turn，否则灰色 |
+| bash（N 条命令） | 每条命令一条提示符行 | 调用合并后的输出 | 今天整次调用一个灯（harness 每次调用只观测到一个 exit）；逐命令 Turn 带逐命令灯需要推迟的执行器变更（见 §状态灯） |
 | bash（REPL） | 每轮 stdin 一个 Turn，`>>>` 提示符 | 该轮的输出 | 活动轮蓝色；shell 报告逐轮 exit status 时已结算轮取 done/error，否则灰色 |
 | read | 路径 + 行范围 | 带行号的文件行 | done/error |
 | write | `path` | 应用后的 diff，真实的新行号 | done/error |
@@ -113,9 +113,9 @@ Block    — one tool call's whole card
 
 统一抽象不改变这条边界。面向模型的文本仍然是扁平化的、仅供模型的编码；骨架的结构化 segment 由各工具已有的 `presentationMeta` 承载（bash 新增一个，取代它的 `parseExitStatus` 文本往返）。不变式 **Model-visible ⟺ logged**（[AGENTS.md:100](../../../../AGENTS.md#L100)）得以保留：模型看到扁平文本，UI 看到结构化 meta，两者由同一次执行产出。
 
-### 可扩展的 render kind 与自定义工具——预留，大部分推迟
+### render kind 与自定义工具——封闭联合，随消费者一起扩展
 
-`Segment.render` 是一个 render kind tagged union。设想的完整词汇表是 `prompt` / `text` / `lines` / `diff` / `kv` / `link` / `json` / `table` / `image` / `notice`，使得一个 segment 的载荷由数据描述，而不是由每个工具各自的组件描述。这正是让自定义工具以三档接入骨架的机制：
+`Segment.render` 是一个**封闭**的 render kind tagged union。它今天只装已实现的 kind（`prompt` / `text` / `lines` / `diff`）；设想中的未来词汇表（`kv` / `link` / `json` / `table` / `image` / `notice`）*还不*在联合里——每个都在有消费者需要时、连同它的渲染器一起加入，从而让 segment 的载荷由数据描述，而不是由每个工具各自的组件描述。这正是让自定义工具以三档接入骨架的机制：
 
 1. **兜底（零代码）。** 没有 presenter 的工具落到 generic：IN = args JSON、OUT = 结果文本，作为普通 segment 渲染——于是它免费获得状态灯、复制、滚动、以及（PR 3 落地后的）预览面板，而不是今天那个功能贫瘠的 `ioCard`。
 2. **声明式（`presentationMeta` 返回一份 render kind 描述，不写 React）。** 工具通过选取 render kind（比如 `kv` + `text` + `link`）来描述自己的 IN/OUT segment；骨架从共享词汇表把它们画出来。内置工具就是同一套机制——每个只是一组固定的 kind 选择。
@@ -133,7 +133,7 @@ Block    — one tool call's whole card
 
 **PR 1 — 骨架 + bash + 一个工具（验证抽象）。** 交付为一个四层 PR 栈（每步基于上一步，用官方 stacked-PR 机制），因为这些步骤有硬依赖顺序、每步是单一关注点、约 400–700 行：
 
-1. **类型 + presentation 契约。** 共享的 `Block`/`Turn`/`Segment` 类型和扩展后的 `ToolResultView`，含可扩展的 render kind union（只实现 `prompt`/`text`/`lines`/`diff`），放在 `@deepseek-ai/dsh-tools`——即已经拥有 `ToolResultView` 和 `presentationMeta`、且被值的生产方（`bash`、`read` 等）依赖的中性工具契约层。React 叶子包 `ui-primitives` 只拥有渲染这些类型的组件，绝不拥有类型本身，因此没有生产方需要反向依赖客户端叶子包，也不存在「唯一一套类型」的第二份声明。纯类型；只有 unit 测试——此时还没有组装后 transcript 快照，因为在 1c 之前没有工具产出它。
+1. **类型 + presentation 契约。** 共享的 `Block`/`Turn`/`Segment` 类型和扩展后的 `ToolResultView`，含一个只装已实现 kind（`prompt`/`text`/`lines`/`diff`）的封闭 render kind union，放在 `@deepseek-ai/dsh-tools`——即已经拥有 `ToolResultView` 和 `presentationMeta`、且被值的生产方（`bash`、`read` 等）依赖的中性工具契约层。React 叶子包 `ui-primitives` 只拥有渲染这些类型的组件，绝不拥有类型本身，因此没有生产方需要反向依赖客户端叶子包，也不存在「唯一一套类型」的第二份声明。纯类型；只有 unit 测试——此时还没有组装后 transcript 快照，因为在 1c 之前没有工具产出它。
 2. **骨架组件**（`ui-primitives` 中，即五张卡片一直预期存在的那个 `CardShell`）：统一的状态灯推导、自适应 gutter、逐 segment 滚动 + overlay 滚动条、逐 segment 复制（控件组**只带复制**）。组件 unit + 渲染快照。
 3. **bash** 迁移，包括交互式/多命令的 Turn，以及一个承载结构化轮次的新 bash `presentationMeta`。第一个真实工具——需要真实工具数据的 snapshot/e2e 覆盖落在这里。
 4. **再迁移一个工具**（read 或 search），在批量迁移前证明这个抽象确实是工具中立的，而不是围绕 bash 成形的；带它自己的 snapshot/e2e。

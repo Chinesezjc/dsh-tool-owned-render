@@ -133,7 +133,7 @@ Block    — one tool call's whole card
 
 **PR 1 — 骨架 + bash + 一个工具（验证抽象）。** 交付为一个四层 PR 栈（每步基于上一步，用官方 stacked-PR 机制），因为这些步骤有硬依赖顺序、每步是单一关注点、约 400–700 行：
 
-1. **类型 + presentation 契约。** 共享的 `Block`/`Turn`/`Segment` 类型和扩展后的 `ToolResultView`，含可扩展的 render kind union（只实现 `prompt`/`text`/`lines`/`diff`）。纯类型；只有 unit 测试——此时还没有组装后 transcript 快照，因为在 1c 之前没有工具产出它。
+1. **类型 + presentation 契约。** 共享的 `Block`/`Turn`/`Segment` 类型和扩展后的 `ToolResultView`，含可扩展的 render kind union（只实现 `prompt`/`text`/`lines`/`diff`），放在 `@deepseek-ai/dsh-tools`——即已经拥有 `ToolResultView` 和 `presentationMeta`、且被值的生产方（`bash`、`read` 等）依赖的中性工具契约层。React 叶子包 `ui-primitives` 只拥有渲染这些类型的组件，绝不拥有类型本身，因此没有生产方需要反向依赖客户端叶子包，也不存在「唯一一套类型」的第二份声明。纯类型；只有 unit 测试——此时还没有组装后 transcript 快照，因为在 1c 之前没有工具产出它。
 2. **骨架组件**（`ui-primitives` 中，即五张卡片一直预期存在的那个 `CardShell`）：统一的状态灯推导、自适应 gutter、逐 segment 滚动 + overlay 滚动条、逐 segment 复制（控件组**只带复制**）。组件 unit + 渲染快照。
 3. **bash** 迁移，包括交互式/多命令的 Turn，以及一个承载结构化轮次的新 bash `presentationMeta`。第一个真实工具——需要真实工具数据的 snapshot/e2e 覆盖落在这里。
 4. **再迁移一个工具**（read 或 search），在批量迁移前证明这个抽象确实是工具中立的，而不是围绕 bash 成形的；带它自己的 snapshot/e2e。

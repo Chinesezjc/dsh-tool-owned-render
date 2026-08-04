@@ -4,7 +4,7 @@ Status: proposed
 
 [English](2026-08-03-unified-list-of-blocks-tool-render.md) | 中文
 
-## Problem
+## 问题
 
 web UI 里每一张工具结果卡片都是一个各自独立的 primitive：自己的数据形状、自己的 CSS 几何、以及在一条人工维护的分发链里自己的一处分支。一共五张工具结果卡片——`TerminalBlock`、`ReadBlock`、`DiffBlock`、`SearchBlock`、`WebBlock`——外加 generic 兜底行和共享代码面 `CodeBlock`，它们在结构上没有任何一致之处：
 
@@ -12,13 +12,13 @@ web UI 里每一张工具结果卡片都是一个各自独立的 primitive：自
 
 - **「输入」没有共享表示。** 只有 `terminal`（command/cwd/description）和 `diff`（`FileDiff[]`）声明了结构化的调用视图。`read`、`grep`、`glob`、`web_search`、`web_fetch` 把整个多字段输入压成一个英文 `title` 字符串加一个 `rawInput` 字符串；grep 的 `path`/`include` 只以 `"Grep X in Y (Z)"` 的子串形式留存。今天唯一真正渲染出 IN/OUT segment 对的地方是通用兜底的 `div.ioCard`（[ToolRow.tsx:294](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L294)），它硬编码在 `ToolRow` 内部，只支持恰好两个 segment，既不能嵌套也不能复用。
 
-- **结构靠约定重复，而不是靠代码共享。** 不存在 `CardShell`（`grep -rn CardShell` 的结果是 0）。五个 CSS module 各自声明一个 `.block` 根节点，重复同样的四条属性，并各自定义自己的 `--dsl-<name>-radius: 12px` / `--dsl-<name>-line-height: 22px`。`headTailCap` 和 `useCopyFeedback` 各自恰好只有两个调用方；`ReadBlock` 和 `DiffBlock` 内联了完全相同的 head/tail 算术和完全相同的 1000 ms 复制超时，并硬编码中文字面量（`WebBlock` 两者都没有——它画出工具已经截断后的全部来源）。三个 `CHAT_*_MAX_LINES = 8` 常量重复着同一句「primitive 默认值的一半」注释（第四个 `CHAT_WEB_MAX_SOURCES` 定义了却从未被消费；两处注释引用的 `CHAT_TERMINAL_MAX_LINES` 并不存在——终端行传的是 `maxLines={Infinity}`）。wire→props 的分发是一段六分支三元表达式，在 [ToolRow.tsx:260](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L260) 写了一遍，又在 [DetailsPanel.tsx:150](../../../../packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx#L150) 以不同的顺序写了一遍。
+- **结构靠约定重复，而不是靠代码共享。** 不存在 `CardShell`（`grep -rn CardShell` 的结果是 0）。五个 CSS module 各自声明一个 `.block` 根节点，重复同样的四条属性，并各自定义自己的 `--dsl-<name>-radius: 12px` / `--dsl-<name>-line-height: 22px`。`headTailCap` 和 `useCopyFeedback` 各自恰好只有两个调用方；`ReadBlock` 和 `DiffBlock` 内联了完全相同的 head/tail 算术和完全相同的 1000 ms 复制超时，并硬编码中文字面量（`WebBlock` 两者都没有——它画出工具已经截断后的全部来源）。三个 `CHAT_*_MAX_LINES = 8` 常量重复着同一句「primitive 默认值的一半」注释，而两处注释引用的 `CHAT_TERMINAL_MAX_LINES` 并不存在——终端行传的是 `maxLines={Infinity}`。wire→props 的分发是一条多分支链，在 [ToolRow.tsx:258](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L258) 以嵌套三元写了一遍，又在 [DetailsPanel.tsx:150](../../../../packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx#L150) 以 if/return 链、不同的顺序写了一遍。
 
 - **i18n 不对称。** 只有 `TerminalBlock` 具备完整的 `TerminalBlockLabels` 表层；另外四张卡片内联中文字面量——[ui-primitives/README.md](../../../../packages/client/ui-primitives/README.md) 只记录了 `WebBlock` 的缺口，另外三张未被记录。
 
 直接触发这项工作的需求是交互式、多命令的 bash：一次 bash 调用会运行多条命令，而持久/交互式会话（REPL、PTY）会分多轮交换 stdin/stdout。两者都不适配 `TerminalBlock` 那种「一张卡片、一条命令横幅、一个输出框、一个状态」的扁平形状。只扩展 bash 会新增第六个各自独立的变体。交互式 bash 所需要的 List-of-Blocks 结构，正是能统一全部五张卡片的结构，因此这个基础值得为全部卡片一次性铺好，而不是只给 bash 单独加一个专用的多命令模式。
 
-## Proposal
+## 提案
 
 引入一个共享的渲染骨架，采用三层结构，并把现有五张卡片——以及交互式/多命令 bash——都表达为它的实例。骨架拥有所有共性部分（布局、状态灯、对齐 gutter、逐 segment 滚动、复制、全屏）；每个工具只提供自己的输入和输出如何渲染。
 
@@ -48,7 +48,7 @@ Block    — one tool call's whole card
 - **bash 可以进一步细分**，因为它有其他工具没有的 exit code：`timedOut`/`aborted` → **琥珀色（warn）**（harness 因为限额或取消而终止了它——命令没有选择余地）；不是来自我们的 timeout/abort 的终止 `signal` → **红色**（崩溃的 `SIGSEGV`，或外部的 `SIGTERM`；我们为超时发出的 `SIGTERM` 已经被琥珀色规则覆盖，所以能走到这里的 signal 都来自外部）；其余情况由 exit code 决定。
 - **灰色（neutral）** 只用在结果确实无法观测的场合——一个 REPL turn（`>>> 2+2`）没有 shell exit code，一次多命令调用（`echo a; false; echo b`）里非末尾命令也没有逐命令状态：harness 每次调用只观测到一个 exit code，而「一次调用跑多条命令且带逐命令状态」在任何地方都不是现有能力。两者都是灰色。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。因此逐 Turn 灯只出现在 harness 能观测到该 Turn 自身结果的场合——单命令调用，或交互式会话的一轮；采集逐命令状态（执行器变更）是推迟的能力，在类型中预留，它会把多命令调用的中间 Turn 从灰色升级为有灯。
 
-`warn`（琥珀色）是相对当前 `StateDot` 三状态用法唯一新增的状态；对应的 token 已经存在（[StateDot.module.css](../../../../packages/client/ui-primitives/src/StateDot.module.css)）。信号归因只使用 harness 自己的布尔量（`timedOut`/`aborted`），绝不猜测信号由谁发出，因为操作系统不报告发送方。这两个布尔量必须由新的 bash `presentationMeta` 承载：在回放路径上 presenter 只能看到 `content`、`isError` 和 `meta`——永远看不到原始 result value——而 bash 工具的 `timedOut` 住在 value 里，所以没有 meta 投影，琥珀灯就无法在回放中存活。
+`warn`（琥珀色）是相对当前 `StateDot` 三状态用法唯一新增的状态；对应的 token 已经存在（[StateDot.module.css](../../../../packages/client/ui-primitives/src/StateDot.module.css)）。信号归因只使用 harness 自己的信号，绝不猜测信号由谁发出，因为操作系统不报告发送方。两个琥珀色输入按通道分开：被中止的调用以 `error.code: 'interrupted'` 结算在持久化的 result node 上，客户端状态灯推导直接读取它（与今天行的 `stopped` 状态同源——无需任何 meta 即可回放）；`timedOut` 住在 bash 的 result value 里，presenter 永远看不到它（`presentationMeta` 只在成功路径上运行），所以它必须由新的 bash `presentationMeta` 承载，琥珀灯才能在回放中存活。
 
 与今天的 `StateDot` 一样，状态灯只有颜色语义且 `aria-hidden`；每个灯都配一段可访问的状态文本（沿用行的 `stateStatus` 模式），使 done/error/running/warn 在无色觉或使用屏幕阅读器时依然可分辨。
 
@@ -105,7 +105,7 @@ Block    — one tool call's whole card
 
 来源列表和抓取正文是一等的多 OUT segment 用例，取代今天「一张卡片外加一个兄弟 div」的做法。web 来源渲染为真正的仅 `http(s)` 链接（复用 `WebBlock` 的 `SafeLink` 安全处理）。
 
-两种展示形状明确地存活进骨架。write/edit 保留运行中的 call-time diff——今天的 `diffCardModel` 在调用进行中显示预期变更、结算后显示应用后的 hunk——因此挂起中的 diff 不会因为结果导向的表格而丢失。`run_code` 的程序体今天走 `CodeBlock` + shiki，将作为骨架的代码 segment 通过同一套 shiki 集成渲染，代码展示在迁移中得以保留。
+两种展示形状明确地存活进骨架。write/edit 保留运行中的 call-time diff——今天的 `diffCardModel` 在调用进行中显示预期变更、结算后显示应用后的 hunk——因此挂起中的 diff 不会因为结果导向的表格而丢失。代码变体的程序体（`run_code`、`cordis_mount`）今天走 `CodeBlock` + shiki，将作为骨架的代码 segment 通过同一套 shiki 集成渲染，代码展示在迁移中得以保留。
 
 ### 数据来源：可从文本重建的那条边界得以保留
 
@@ -148,7 +148,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 本文对应的工作是 PR 1，它本身是一个四层 PR 栈（1a–1d）；PR 2（全量迁移，一叠按工具组拆分的 PR）先于 PR 3（全屏）。
 
-## Alternatives considered
+## 曾考虑的替代方案
 
 - **只把 bash 扩展成多命令，其余四张卡片不动。** 否决：交互式 bash 无论如何都需要 List-of-Blocks，而且「输入是一个 title 字符串」「状态在卡片之外」「OUT 本来就是两部分」这些模式是跨工具共有的，不是 bash 独有的。
 
@@ -166,7 +166,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 - **现在就实现递归。** 推迟而非否决：保留为一个有类型的接入点，使将来的分组功能不需要第二次数据形状迁移。
 
-## Acceptance criteria
+## 验收标准
 
 - `core/tools/src/presentation.ts` 的 presentation 契约中存在唯一一套 `Block`/`Turn`/`Segment` 类型（与 `ToolResultView` 并列，工具在这里类型化自己的 `presentationMeta` 投影——绝不放 `ui-primitives`，host 侧无法 import 它），`ui-primitives` 中存在骨架组件；bash 和另一个工具通过它渲染；对这两个工具，当前的四套状态推导被那一个状态灯函数取代。
 - bash 通过 `presentationMeta` 承载结构化轮次；它的 `parseExitStatus` 文本往返被移除；面向模型的 bash 文本保持不变（快照）。
@@ -175,7 +175,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 - 逐 segment 的 IN/OUT 复制可用（本 PR 控件组只带复制；展开按钮和全屏查看器是独立 PR）；`Turn`/`Block` 递归存在于类型中且运行时未被使用。
 - 完整的测试矩阵在 PR 1 整体交付（unit per-file 100%、real-API e2e、keyless 快照、适用的 web browser 快照、smoke、CI gates、sandbox），其中包含一条通过真实可运行示例、断言组装后 transcript 的 keyless 快照。覆盖集中在 1c/1d（首批有真实工具产出 transcript 的 PR）；1a/1b 按迁移节所述带它们能带的测试。
 
-## Risks
+## 风险
 
 - **范围。** 这会触及 presentation 契约（[presentation.ts](../../../../packages/core/tools/src/presentation.ts)）、card-model 推导层、`ui-primitives`，以及 host→client 的视图流。它被分阶段执行（现在只做 bash + 一个工具），以约束第一个 PR 的规模，同时验证通用性。
 - **wire 数据不可信。** `sessions.schema.ts` 只校验 `for` 和 `card: string`；现有的每个 card-model 都会再做一次防御性收窄。统一后的 wire→props 层**必须**保留逐工具的收窄，否则一个畸形载荷会让某一行或详情面板崩溃。
@@ -184,6 +184,6 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 - **放弃了什么。** 状态统一意味着今天在卡片内*不*显示状态的那五张卡片会获得一个状态灯；对确实无法观测的结果，诚实的取值是灰色——抽象不得为它无法观测的东西制造出绿色的「成功」（这与状态灯和 gutter 共同遵循的「可观测才显示，否则省略」原则一致）。
 - **AGENTS.md 已经过时。** [AGENTS.md:116](../../../../AGENTS.md#L116) 仍然列着三种卡片类型；render-intent 联合类型已经有六种。这项工作应在同一个 PR 中更新那一行以及 render-intent 的设计说明。
 
-## Supersedes
+## 取代
 
 本提案取代各卡片的自定义渲染器及其推导层，因此它修订拥有这些决策的 Agent Note。是部分取代，不是全部：presentation 契约、wire 词汇和 generic 兜底都保留。被本工作取代的笔记是 render-intent 联合（[2026-07-02-tool-render-intent-union.md](../../implemented/architecture/2026-07-02-tool-render-intent-union.md)）和逐卡片记录（[2026-07-28-web-terminal-card.md](../../implemented/feature/2026-07-28-web-terminal-card.md)、[2026-07-30-web-read-card.md](../../implemented/feature/2026-07-30-web-read-card.md)、[2026-07-30-web-read-card-frontend.md](../../implemented/feature/2026-07-30-web-read-card-frontend.md)、[2026-07-30-web-search-card.md](../../implemented/feature/2026-07-30-web-search-card.md)、[2026-07-30-web-diff-card.md](../../implemented/feature/2026-07-30-web-diff-card.md)、[2026-07-30-search-render-card.md](../../implemented/feature/2026-07-30-search-render-card.md)、[2026-07-30-web-result-card.md](../../implemented/feature/2026-07-30-web-result-card.md)、[2026-07-30-web-result-card-frontend.md](../../implemented/feature/2026-07-30-web-result-card-frontend.md)、[2026-07-31-web-cards-toolrow.md](../../implemented/feature/2026-07-31-web-cards-toolrow.md)）。按笔记政策的部分取代规则，每一篇在本工作落地处（PR 2）更新而不是合并。

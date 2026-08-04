@@ -8,7 +8,7 @@ Status: proposed
 
 web UI 里每一张工具结果卡片都是一个各自独立的 primitive：自己的数据形状、自己的 CSS 几何、以及在一条人工维护的分发链里自己的一处分支。一共五张工具结果卡片——`TerminalBlock`、`ReadBlock`、`DiffBlock`、`SearchBlock`、`WebBlock`——外加 generic 兜底行和共享代码面 `CodeBlock`，它们在结构上没有任何一致之处：
 
-- **状态分散在六处以上。** 只有 `TerminalBlock` 在卡片*内部*带运行状态指示（整次调用只有一个 `StateDot`，只出现在首行提示符上，见 [TerminalBlock.tsx:240](../../../../packages/client/ui-primitives/src/TerminalBlock.tsx#L240)，外加一个表示 exit code/signal 的 `Pill`）。另外四张卡片都没有；它们的成功、失败和被中止状态由外层行的 chrome 绘制。这些推导没有共同来源：`ToolRowState`（[tool-call-model.ts:23](../../../../packages/client/ui-conversation/src/client/contract/tool-call-model.ts#L23)）、`terminalFailed`（[terminal-card-model.ts:71](../../../../packages/client/ui-conversation/src/client/contract/terminal-card-model.ts#L71)，之所以需要它，是因为失败的 bash 命令结算时 `isError: false`）、`StateDotState` 的四个取值，以及 `TerminalBlock` 内部自己的 running/exit/signal 映射，是同一个概念的四套彼此独立的编码。
+- **状态在四处推导。** 只有 `TerminalBlock` 在卡片*内部*带运行状态指示（整次调用只有一个 `StateDot`，只出现在首行提示符上，见 [TerminalBlock.tsx:240](../../../../packages/client/ui-primitives/src/TerminalBlock.tsx#L240)，外加一个表示 exit code/signal 的 `Pill`）。另外四张卡片都没有；它们的成功、失败和被中止状态由外层行的 chrome 绘制。这些推导没有共同来源：`ToolRowState`（[tool-call-model.ts:23](../../../../packages/client/ui-conversation/src/client/contract/tool-call-model.ts#L23)）、`terminalFailed`（[terminal-card-model.ts:71](../../../../packages/client/ui-conversation/src/client/contract/terminal-card-model.ts#L71)，之所以需要它，是因为失败的 bash 命令结算时 `isError: false`）、`StateDotState` 的四个取值，以及 `TerminalBlock` 内部自己的 running/exit/signal 映射，是同一个概念的四套彼此独立的编码。
 
 - **「输入」没有共享表示。** 只有 `terminal`（command/cwd/description）和 `diff`（`FileDiff[]`）声明了结构化的调用视图。`read`、`grep`、`glob`、`web_search`、`web_fetch` 把整个多字段输入压成一个英文 `title` 字符串加一个 `rawInput` 字符串；grep 的 `path`/`include` 只以 `"Grep X in Y (Z)"` 的子串形式留存。今天唯一真正渲染出 IN/OUT segment 对的地方是通用兜底的 `div.ioCard`（[ToolRow.tsx:294](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L294)），它硬编码在 `ToolRow` 内部，只支持恰好两个 segment，既不能嵌套也不能复用。
 
@@ -48,7 +48,7 @@ Block    — one tool call's whole card
 - **bash 可以进一步细分**，因为它有其他工具没有的 exit code：`timedOut`/`aborted` → **琥珀色（warn）**（harness 因为限额或取消而终止了它——命令没有选择余地）；不是来自我们的 timeout/abort 的终止 `signal` → **红色**（崩溃的 `SIGSEGV`，或外部的 `SIGTERM`；我们为超时发出的 `SIGTERM` 已经被琥珀色规则覆盖，所以能走到这里的 signal 都来自外部）；其余情况由 exit code 决定。
 - **灰色（neutral）** 只用在结果确实无法观测的场合——一个 REPL turn（`>>> 2+2`）没有 shell exit code，一次多命令调用（`echo a; false; echo b`）里非末尾命令也没有逐命令状态：harness 每次调用只观测到一个 exit code，而「一次调用跑多条命令且带逐命令状态」在任何地方都不是现有能力。两者都是灰色。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。因此逐 Turn 灯只出现在 harness 能观测到该 Turn 自身结果的场合——单命令调用，或交互式会话的一轮；采集逐命令状态（执行器变更）是推迟的能力，在类型中预留，它会把多命令调用的中间 Turn 从灰色升级为有灯。
 
-`warn`（琥珀色）是相对当前 `StateDot` 三状态用法唯一新增的状态；对应的 token 已经存在（[StateDot.module.css](../../../../packages/client/ui-primitives/src/StateDot.module.css)）。信号归因只使用 harness 自己的信号，绝不猜测信号由谁发出，因为操作系统不报告发送方。两个琥珀色输入按通道分开：被中止的调用以 `error.code: 'interrupted'` 结算在持久化的 result node 上，客户端状态灯推导直接读取它（与今天行的 `stopped` 状态同源——无需任何 meta 即可回放）；`timedOut` 住在 bash 的 result value 里，presenter 永远看不到它（`presentationMeta` 只在成功路径上运行），所以它必须由新的 bash `presentationMeta` 承载，琥珀灯才能在回放中存活。
+`warn`（琥珀色）是相对当前 `StateDot` 三状态用法唯一新增的状态；对应的 token 已经存在（[StateDot.module.css](../../../../packages/client/ui-primitives/src/StateDot.module.css)）。信号归因只使用 harness 自己的信号，绝不猜测信号由谁发出，因为操作系统不报告发送方。两个琥珀色输入按通道分开：被中止的调用可以从持久化的流中重建——客户端为中途消失的调用推导出 `error.code: 'interrupted'` result node（今天行的 `stopped` 状态的来源；该推导是事件流的纯函数，在回放路径上也运行，history-fold.ts），状态灯把这一信号映射为琥珀色；`timedOut` 住在 bash 的 result value 里，presenter 永远看不到它（`presentationMeta` 只在成功路径上运行），所以它必须由新的 bash `presentationMeta` 承载，琥珀灯才能在回放中存活。
 
 与今天的 `StateDot` 一样，状态灯只有颜色语义且 `aria-hidden`；每个灯都配一段可访问的状态文本（沿用行的 `stateStatus` 模式），使 done/error/running/warn 在无色觉或使用屏幕阅读器时依然可分辨。
 
@@ -105,7 +105,7 @@ Block    — one tool call's whole card
 
 来源列表和抓取正文是一等的多 OUT segment 用例，取代今天「一张卡片外加一个兄弟 div」的做法。web 来源渲染为真正的仅 `http(s)` 链接（复用 `WebBlock` 的 `SafeLink` 安全处理）。
 
-两种展示形状明确地存活进骨架。write/edit 保留运行中的 call-time diff——调用进行中，预期变更作为 OUT segment 渲染，结算时由应用后的结果 diff 替换（今天的 `diffCardModel` 行为）——因此挂起中的 diff 不会因为结果导向的表格而丢失。代码变体的程序体（`run_code`、`cordis_mount`）今天走 `CodeBlock` + shiki，将作为 `lines` segment（带行号，`lang` 驱动同一套 shiki 集成）渲染，代码展示在迁移中得以保留。
+两种展示形状明确地存活进骨架。write/edit 保留运行中的 call-time diff——调用进行中，预期变更作为 OUT segment 渲染，结算时由应用后的结果 diff 替换（今天的 `diffCardModel` 行为）——因此挂起中的 diff 不会因为结果导向的表格而丢失。代码变体的程序体（`run_code`、`cordis_mount`）今天走 `CodeBlock` + shiki，将作为 IN segment 以 `text` 形态渲染（等宽字体 + `lang` 驱动的高亮——不带行号，遵循 IN segment 永不带行号的规则），代码展示在迁移中得以保留。
 
 ### 数据来源：可从文本重建的那条边界得以保留
 
@@ -140,7 +140,7 @@ Block    — one tool call's whole card
 
 snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 transcript 的 PR）；1a/1b 带它们能带的测试（类型、组件 unit），而不是在工具存在之前强行要求组装后 transcript 快照。
 
-**PR 2 — 迁移其余工具（优先级高于预览面板）。** 抽象验证过后，把其余所有工具（write/edit、grep/glob、web_search/web_fetch）迁进骨架（generic 兜底路径随 PR 1 的骨架一起交付——PR 2 下线 `ToolRow`/`DetailsPanel` 里旧的 `ioCard`/扁平文本兜底分支）；收敛 `ToolRow`/`DetailsPanel` 中的六分支 wire→props 分发；下线已不再使用的各 block `.block` 几何、五个 `*-card-model`、以及重复的截断/复制代码；统一 `CHAT_*` 常量；把 i18n 收进一个 labels 表层。这一步承载产品价值（所有卡片统一到一套骨架），所以排在预览面板增强之前。单个约 8–10k 行的 PR 无法 review 且风险集中，因此 PR 2 用仓库的官方 stacked-PR 机制交付为一叠更小的按工具组拆分的 PR（例如 write/edit；grep/glob；web），每个约 500–800 行。
+**PR 2 — 迁移其余工具（优先级高于预览面板）。** 抽象验证过后，把其余所有工具（write/edit、grep/glob、web_search/web_fetch，以及代码变体 `run_code`/`cordis_mount`）迁进骨架（generic 兜底路径随 PR 1 的骨架一起交付——PR 2 下线 `ToolRow`/`DetailsPanel` 里旧的 `ioCard`/扁平文本兜底分支）；收敛 `ToolRow`/`DetailsPanel` 中的多分支 wire→props 分发；下线已不再使用的各 block `.block` 几何、五个 `*-card-model`、以及重复的截断/复制代码；统一 `CHAT_*` 常量；把 i18n 收进一个 labels 表层。这一步承载产品价值（所有卡片统一到一套骨架），所以排在预览面板增强之前。单个约 8–10k 行的 PR 无法 review 且风险集中，因此 PR 2 用仓库的官方 stacked-PR 机制交付为一叠更小的按工具组拆分的 PR（例如 write/edit；grep/glob；web），每个约 500–800 行。
 
 **PR 3 — 侧边预览面板。** 可调宽的侧边预览面板*以及*打开它的 `⤢` 展开按钮，是一个独立的、优先级更低的增强，放在各自的 PR、依赖骨架 PR。它在一个右侧停靠、可拖拽调宽、单例（点击替换）的容器里复用骨架的 Segment 渲染，演进自今天的 `DetailsPanel` Output 面板；二级展开把面板带到真正的全屏（scroll-lock、overlay 滚动条）。骨架 PR 既不渲染也不引用它；展开按钮只在这个 PR 里出现。
 

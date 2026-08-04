@@ -20,7 +20,7 @@ web UI 里每一张工具结果卡片都是一个各自独立的 primitive：自
 
 ## 提案
 
-引入一个共享的渲染骨架，采用三层结构，并把现有五张卡片——以及交互式/多命令 bash——都表达为它的实例。骨架拥有所有共性部分（布局、状态灯、对齐 gutter、逐 segment 滚动、复制、全屏）；每个工具只提供自己的输入和输出如何渲染。
+引入一个共享的渲染骨架，采用三层结构，并把现有五张卡片——以及交互式/多命令 bash——都表达为它的实例。骨架拥有所有共性部分（布局、状态灯、对齐 gutter、逐 segment 滚动、复制、以及通往侧边预览面板的展开挂钩）；每个工具只提供自己的输入和输出如何渲染。
 
 一个验证本设计的交互式原型（覆盖所有工具形态、压测用例、以及盲区的 render kind）放在孤儿 assets 分支上，不在主干树里：[`unified-list-of-blocks-mock.html`](https://github.com/deepseek-harness/deepseek-harness/blob/list-of-blocks-assets/unified-list-of-blocks-mock.html)。它是一次性设计工件——以本文文字为准，而非原型，来决定最终交付什么。
 
@@ -79,7 +79,7 @@ Block    — one tool call's whole card
 
 每个 Segment 都带自己的控件组，锚定在 segment 外壳的右上角（即不滚动的包裹层，因此内容滚动时它保持不动），在 segment hover、键盘焦点（`:focus-within`）和触摸时显示，且每个控件本身都可键盘和触摸操作。复制是**逐 segment 的**（IN 和 OUT 各有一个）——复制命令和复制输出是两个独立动作；Block 没有整卡复制按钮。**在骨架 PR 中控件组只有复制。**
 
-`⤢` 展开按钮以及它打开的全屏查看器**拆分成各自的后续 PR**（见「迁移形态」）。这里为完整设计一并描述：展开会在一个**充满整个视口的 VSCode 风格全屏查看器**中打开该 segment（不是居中的 modal 浮层）：标题栏显示该 segment 的上下文（工具 + IN 的命令/路径/查询）以及一个关闭控件；行号列；行 hover；语法高亮。打开时锁定 body 滚动（`fs-lock`），使底层页面既不滚动也不显示原生滚动条；查看器自身的滚动使用同一套自绘 overlay。Escape 或关闭控件退出。当内容连视口都装不下时，查看器自身滚动。**实现说明：** 高亮应复用仓库已有的 shiki 集成（如同 `CodeBlock` 那样），而不是手写 tokenizer。
+`⤢` 展开按钮以及它打开的预览面板**拆分成各自的后续 PR**（见「迁移形态」）。这里为完整设计一并描述：展开会在对话右侧打开一个**可调宽的侧边预览面板**，而不是全屏接管。该面板是一个通用预览容器——用与内联卡片相同的 Segment 渲染来展示该 segment 的内容（今天是 bash segment；以后可以是 code preview 或其他 kind），带工具/IN 上下文作为头部、行号列、overlay 滚动条。宽度可通过分隔条手柄拖拽调节。面板是**单例**：在面板已打开时点击另一个 segment 的 `⤢`，会就地**替换**面板内容，而不是叠加或打开第二个面板。面板自身可以**再展开一级到真正的全屏**（全屏成为面板的二级动作，而非首要动作）；在那一级底层页面被 scroll-lock，面板自身的滚动仍用同一套自绘 overlay。Escape 或关闭控件按一级收起（全屏 → 面板 → 关闭）。这是今天右侧 `DetailsPanel` Output 面板演进为可拖拽、点击替换的通用容器。**实现说明：** 任何 code/语法渲染复用仓库已有的 shiki 集成（如同 `CodeBlock` 那样），而不是手写 tokenizer。
 
 ### 空的 / 无输入的 segment 对称折叠
 
@@ -117,17 +117,17 @@ Block    — one tool call's whole card
 
 `Segment.render` 是一个可扩展的 render kind tagged union。设想的完整词汇表是 `prompt` / `text` / `lines` / `diff` / `kv` / `link` / `json` / `table` / `image` / `notice`，使得一个 segment 的载荷由数据描述，而不是由每个工具各自的组件描述。这正是让自定义工具以三档接入骨架的机制：
 
-1. **兜底（零代码）。** 没有 presenter 的工具落到 generic：IN = args JSON、OUT = 结果文本，作为普通 segment 渲染——于是它免费获得状态灯、复制、全屏和滚动，而不是今天那个功能贫瘠的 `ioCard`。
+1. **兜底（零代码）。** 没有 presenter 的工具落到 generic：IN = args JSON、OUT = 结果文本，作为普通 segment 渲染——于是它免费获得状态灯、复制、滚动、以及（PR 3 落地后的）预览面板，而不是今天那个功能贫瘠的 `ioCard`。
 2. **声明式（`presentationMeta` 返回一份 render kind 描述，不写 React）。** 工具通过选取 render kind（比如 `kv` + `text` + `link`）来描述自己的 IN/OUT segment；骨架从共享词汇表把它们画出来。内置工具就是同一套机制——每个只是一组固定的 kind 选择。
 3. **自定义 React 渲染器。** 需要词汇表之外形状的工具，把自己的组件注册到现有的 `conversation.chat.toolview` slot 上，绕过骨架。这是词汇表之外形状的逃生阀——也是今天内置行的*主*路径（`bash`/`read`/`search`/`web`/`write`/`edit`/`ask_user_question`/`todo_write` 已经在按工具注册组件到这个 slot，`GenericToolCard` 是兜底），骨架 PR 会把它们迁移到共享的 render kind 上。
 
-**本 PR 的范围刻意收窄。** 只有第 1 档（兜底）和内置 bash/read/（再一个）实际用到的 render kind（`prompt`/`text`/`lines`/`diff`）现在交付。其余 kind（`kv`/`link`/`json`/`table`/`image`/`notice`）、作为公开契约的第 2 档声明式、以及第 3 档接线都**推迟——且不在类型中预声明**：render kind 联合遵循 render-intent 联合的封闭联合纪律（[render-intent-union 笔记](../../implemented/architecture/2026-07-02-tool-render-intent-union.md) 否决了 merge-extensible 联合，因为消费者静默丢弃的变体比封闭联合在 switch 处抛出的编译错误更糟）。每个 kind 随它的渲染器一起交付，新增一个是在骨架 kind switch 处的编译破坏性变更。现在设计好的只是扩展点本身——联合加上骨架的 kind switch——使新增 kind 不需要改数据形状；卡片级的 `ToolResultView` 联合按那篇笔记保持封闭，匹配不到任何已知 kind 的载荷显式退化为 `text`，绝不静默。原型验证了推迟的 kind 能在骨架内组合（一个自定义 `deploy` 工具用 `kv`+`text`+`link`；image、table、JSON 树作为 OUT kind），这是扩展点足够用的证据——而不是在本 PR 交付它们的承诺。
+**PR 1 的范围刻意收窄。** 只有第 1 档（骨架的 generic 兜底：IN = args JSON、OUT = 结果文本，作为普通 segment）和 bash 加另一个工具（read 或 search，见 1d）实际用到的 render kind（`prompt`/`text`/`lines`/`diff`）现在交付；PR 2 下线 `ToolRow`/`DetailsPanel` 里旧的 `ioCard`/扁平文本兜底分支。其余 kind（`kv`/`link`/`json`/`table`/`image`/`notice`）、作为公开契约的第 2 档声明式、以及第 3 档接线都**推迟——且不在类型中预声明**：render kind 联合遵循 render-intent 联合的封闭联合纪律（[render-intent-union 笔记](../../implemented/architecture/2026-07-02-tool-render-intent-union.md) 否决了 merge-extensible 联合，因为消费者静默丢弃的变体比封闭联合在 switch 处抛出的编译错误更糟）。每个 kind 随它的渲染器一起交付，新增一个是在骨架 kind switch 处的编译破坏性变更。现在设计好的只是扩展点本身——联合加上骨架的 kind switch——使新增 kind 不需要改数据形状；卡片级的 `ToolResultView` 联合按那篇笔记保持封闭，匹配不到任何已知 kind 的载荷显式退化为 `text`，绝不静默。原型验证了推迟的 kind 能在骨架内组合（一个自定义 `deploy` 工具用 `kv`+`text`+`link`；image、table、JSON 树作为 OUT kind），这是扩展点足够用的证据——而不是在本 PR 交付它们的承诺。
 
 同样，原型演练过的运行时状态形态——流式追加（蓝灯、OUT 增长）、后台任务（taskId + 一个 `notice` 提示轮询）、中途取消（琥珀色 + 部分输出）、sandbox denial（红色 + `notice`）、需审批的工具（一个 `notice` + 批准/拒绝控件）、以及纯 IN 副作用 Turn（一个只有 IN、完全没有 OUT segment 的 Turn，区别于空 OUT）——都是 seam 必须不阻断的真实形态，但它们的渲染推迟到添加各自行为的 PR。第一个 PR 只保证类型和 seam 不挡住它们。
 
 ### 递归推迟（只留类型接入点）
 
-`Turn`/`Block` 的递归——一组命令折叠成一个可展开单元并带一个聚合状态灯——在这里只保留为一个有类型的字段，**不实现**：没有聚合规则，没有递归渲染器，没有分组摘要。它标出分组功能将来接入的位置，从而不需要再改一次数据形状。现在就实现它，需要定义四种灯色之间的状态聚合、一个 bash 本身并不提供的分组标题来源，以及一份本地化的折叠摘要——而当前的驱动需求（多命令、交互式）都不需要这些。
+`Turn`/`Block` 的递归——一组命令折叠成一个可展开单元并带一个聚合状态灯——**整体推迟，类型中不放任何字段**：没有聚合规则，没有递归渲染器，没有分组摘要。预声明一个没有消费者的递归字段，会让生产方构造出客户端静默忽略的类型合法值——正是封闭联合规则要拒绝的失败模式——所以分组功能在真正构建时，作为与它的渲染器一同落地的编译破坏性类型扩展（不声称「不需要第二次数据形状迁移」）。现在就实现它，需要定义四种灯色之间的状态聚合、一个 bash 本身并不提供的分组标题来源，以及一份本地化的折叠摘要——而当前的驱动需求（多命令、交互式）都不需要这些。
 
 ### 迁移形态
 
@@ -140,13 +140,13 @@ Block    — one tool call's whole card
 
 snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 transcript 的 PR）；1a/1b 带它们能带的测试（类型、组件 unit），而不是在工具存在之前强行要求组装后 transcript 快照。
 
-**PR 2 — 迁移其余工具（优先级高于全屏）。** 抽象验证过后，把其余所有工具（write/edit、grep/glob、web_search/web_fetch，以及 generic 兜底）迁进骨架；收敛 `ToolRow`/`DetailsPanel` 中的六分支 wire→props 分发；下线已不再使用的各 block `.block` 几何、五个 `*-card-model`、以及重复的截断/复制代码；统一 `CHAT_*` 常量；把 i18n 收进一个 labels 表层。这一步承载产品价值（所有卡片统一到一套骨架），所以排在全屏增强之前。单个约 8–10k 行的 PR 无法 review 且风险集中，因此 PR 2 用仓库的官方 stacked-PR 机制交付为一叠更小的按工具组拆分的 PR（例如 write/edit；grep/glob；web），每个约 500–800 行。
+**PR 2 — 迁移其余工具（优先级高于预览面板）。** 抽象验证过后，把其余所有工具（write/edit、grep/glob、web_search/web_fetch）迁进骨架（generic 兜底路径随 PR 1 的骨架一起交付——PR 2 下线 `ToolRow`/`DetailsPanel` 里旧的 `ioCard`/扁平文本兜底分支）；收敛 `ToolRow`/`DetailsPanel` 中的六分支 wire→props 分发；下线已不再使用的各 block `.block` 几何、五个 `*-card-model`、以及重复的截断/复制代码；统一 `CHAT_*` 常量；把 i18n 收进一个 labels 表层。这一步承载产品价值（所有卡片统一到一套骨架），所以排在预览面板增强之前。单个约 8–10k 行的 PR 无法 review 且风险集中，因此 PR 2 用仓库的官方 stacked-PR 机制交付为一叠更小的按工具组拆分的 PR（例如 write/edit；grep/glob；web），每个约 500–800 行。
 
-**PR 3 — 全屏查看器。** VSCode 风格全屏查看器*以及*打开它的 `⤢` 展开按钮，是一个独立的、优先级更低的增强，放在各自的 PR、依赖骨架 PR。它在一个全视口容器里复用骨架的 Segment 渲染（标题栏取自该 Turn 的 IN 上下文、行号列、overlay 滚动条），锁定 body，并通过仓库的 shiki 集成加语法高亮。骨架 PR 既不渲染也不引用它；展开按钮只在这个 PR 里出现。
+**PR 3 — 侧边预览面板。** 可调宽的侧边预览面板*以及*打开它的 `⤢` 展开按钮，是一个独立的、优先级更低的增强，放在各自的 PR、依赖骨架 PR。它在一个右侧停靠、可拖拽调宽、单例（点击替换）的容器里复用骨架的 Segment 渲染，演进自今天的 `DetailsPanel` Output 面板；二级展开把面板带到真正的全屏（scroll-lock、overlay 滚动条）。骨架 PR 既不渲染也不引用它；展开按钮只在这个 PR 里出现。
 
 **后续** — 推迟的扩展点（声明式 render kind 第 2 档、非文件 render kind `kv`/`link`/`json`/`table`/`image`/`notice`、第 3 档自定义渲染器、`Turn`/`Block` 递归，以及各行为对应的状态形态）在其服务的行为被构建时，作为各自的 PR 落地。
 
-本文对应的工作是 PR 1，它本身是一个四层 PR 栈（1a–1d）；PR 2（全量迁移，一叠按工具组拆分的 PR）先于 PR 3（全屏）。
+本文对应的工作是 PR 1，它本身是一个四层 PR 栈（1a–1d）；PR 2（全量迁移，一叠按工具组拆分的 PR）先于 PR 3（侧边预览面板）。
 
 ## 曾考虑的替代方案
 
@@ -160,11 +160,11 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 - **状态灯和行号分成固定列与滚动列两列。** 因过度设计而否决：既然状态灯在 IN segment 上、行号在 OUT segment 上，一个内容互斥的共享 gutter 列就足够了，而且 IN segment 很少滚动，状态灯自然就是固定的。
 
-- **展开做成居中 modal / 「显示另外 N 行」按钮。** 否决，改为全视口的 VSCode 风格查看器（应对长内容）加逐 segment 滚动（应对快速浏览）；两者合起来覆盖两种阅读方式。
+- **展开做成居中 modal / 全屏接管 / 「显示另外 N 行」按钮。** 否决，改为可调宽的右侧停靠侧边预览面板（单例、点击替换、通用容器，带一个可选的二级展开到真正全屏）加逐 segment 滚动（应对快速浏览）；面板在预览时保持对话可见，可推广到 code preview 和其他 kind，并复用现有 `DetailsPanel` 的位置，而不是把全视口接管作为首要动作。
 
 - **用 `::-webkit-scrollbar` 给原生滚动条设样式。** 否决：只在 webkit 生效，在 headless/其他引擎中缺失，会占用宽度，而且无法与卡片设计保持一致。自绘 overlay 与引擎无关——不过交付版本应使用有维护的依赖，而不是原型里的那个手写滑块。
 
-- **现在就实现递归。** 推迟而非否决：保留为一个有类型的接入点，使将来的分组功能不需要第二次数据形状迁移。
+- **现在就实现递归。** 推迟而非否决：分组功能在构建时作为与渲染器一同落地的编译破坏性类型扩展——不预声明后门字段，遵循封闭联合纪律。
 
 ## 验收标准
 
@@ -172,7 +172,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 - bash 通过 `presentationMeta` 承载结构化轮次；它的 `parseExitStatus` 文本往返被移除；面向模型的 bash 文本保持不变（快照）。
 - 多命令和交互式（多轮）bash 渲染为多个 Turn/Segment，在 harness 能观测到每个 Turn 结果处带逐 Turn 状态灯、观测不到处为灰色；单命令情形在视觉上与今天的 `TerminalBlock` 等价（快照）。
 - 每个 Block 一个 gutter 宽度，能对齐每个 Turn 的 body 起始线；行号始终可见；空输出和无输入的 segment 按上述规则折叠。
-- 逐 segment 的 IN/OUT 复制可用（本 PR 控件组只带复制；展开按钮和全屏查看器是独立 PR）；`Turn`/`Block` 递归存在于类型中且运行时未被使用。
+- 逐 segment 的 IN/OUT 复制可用（本 PR 控件组只带复制；展开按钮和侧边预览面板是独立 PR）；类型中不存在 `Turn`/`Block` 递归字段（与它的渲染器一同推迟）。
 - 完整的测试矩阵在 PR 1 整体交付（unit per-file 100%、real-API e2e、keyless 快照、适用的 web browser 快照、smoke、CI gates、sandbox），其中包含一条通过真实可运行示例、断言组装后 transcript 的 keyless 快照。覆盖集中在 1c/1d（首批有真实工具产出 transcript 的 PR）；1a/1b 按迁移节所述带它们能带的测试。
 
 ## 风险

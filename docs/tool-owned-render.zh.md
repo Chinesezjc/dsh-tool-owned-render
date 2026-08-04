@@ -48,7 +48,7 @@ Block    — one tool call's whole card
 - **bash 可以进一步细分**，因为它有其他工具没有的 exit code：`timedOut`/`aborted` → **琥珀色（warn）**（harness 因为限额或取消而终止了它——命令没有选择余地）；不是来自我们的 timeout/abort 的终止 `signal` → **红色**（崩溃的 `SIGSEGV`，或外部的 `SIGTERM`；我们为超时发出的 `SIGTERM` 已经被琥珀色规则覆盖，所以能走到这里的 signal 都来自外部）；其余情况由 exit code 决定。
 - **灰色（neutral）** 只用在结果确实无法观测的场合——一个 REPL turn（`>>> 2+2`）没有 shell exit code，一次多命令调用（`echo a; false; echo b`）里非末尾命令也没有逐命令状态：harness 每次调用只观测到一个 exit code，而「一次调用跑多条命令且带逐命令状态」在任何地方都不是现有能力。两者都是灰色。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。因此逐 Turn 灯只出现在 harness 能观测到该 Turn 自身结果的场合——单命令调用，或交互式会话的一轮；采集逐命令状态（执行器变更）是推迟的能力，在类型中预留，它会把多命令调用的中间 Turn 从灰色升级为有灯。
 
-`warn`（琥珀色）是相对当前 `StateDot` 三状态用法唯一新增的状态；对应的 token 已经存在（[StateDot.module.css](../../../../packages/client/ui-primitives/src/StateDot.module.css)）。信号归因只使用 harness 自己的布尔量（`timedOut`/`aborted`），绝不猜测信号由谁发出，因为操作系统不报告发送方。
+`warn`（琥珀色）是相对当前 `StateDot` 三状态用法唯一新增的状态；对应的 token 已经存在（[StateDot.module.css](../../../../packages/client/ui-primitives/src/StateDot.module.css)）。信号归因只使用 harness 自己的布尔量（`timedOut`/`aborted`），绝不猜测信号由谁发出，因为操作系统不报告发送方。这两个布尔量必须由新的 bash `presentationMeta` 承载：在回放路径上 presenter 只能看到 `content`、`isError` 和 `meta`——永远看不到原始 result value——而 bash 工具的 `timedOut` 住在 value 里，所以没有 meta 投影，琥珀灯就无法在回放中存活。
 
 与今天的 `StateDot` 一样，状态灯只有颜色语义且 `aria-hidden`；每个灯都配一段可访问的状态文本（沿用行的 `stateStatus` 模式），使 done/error/running/warn 在无色觉或使用屏幕阅读器时依然可分辨。
 
@@ -105,6 +105,8 @@ Block    — one tool call's whole card
 
 来源列表和抓取正文是一等的多 OUT segment 用例，取代今天「一张卡片外加一个兄弟 div」的做法。web 来源渲染为真正的仅 `http(s)` 链接（复用 `WebBlock` 的 `SafeLink` 安全处理）。
 
+两种展示形状明确地存活进骨架。write/edit 保留运行中的 call-time diff——今天的 `diffCardModel` 在调用进行中显示预期变更、结算后显示应用后的 hunk——因此挂起中的 diff 不会因为结果导向的表格而丢失。`run_code` 的程序体今天走 `CodeBlock` + shiki，将作为骨架的代码 segment 通过同一套 shiki 集成渲染，代码展示在迁移中得以保留。
+
 ### 数据来源：可从文本重建的那条边界得以保留
 
 卡片之间真正的分界在于：结构化载荷能否从面向模型的结果文本无损重建。bash 可以（`command`/`cwd` 来自 args，exit 标记可从输出解析出来），这也是它成为今天唯一**不**使用 `presentationMeta` 的卡片的原因。read 的行号、search 的分组和 web 的来源在文本中是有损的，所以它们通过 `presentationMeta` 承载——那是唯一能在回放中留存的结构化通道，因为 `ToolEventView` 从不被持久化（[api/events.ts](../../../../packages/host/apiproxy/src/api/events.ts)）。
@@ -119,7 +121,7 @@ Block    — one tool call's whole card
 2. **声明式（`presentationMeta` 返回一份 render kind 描述，不写 React）。** 工具通过选取 render kind（比如 `kv` + `text` + `link`）来描述自己的 IN/OUT segment；骨架从共享词汇表把它们画出来。内置工具就是同一套机制——每个只是一组固定的 kind 选择。
 3. **自定义 React 渲染器。** 需要词汇表之外形状的工具，把自己的组件注册到现有的 `conversation.chat.toolview` slot 上，绕过骨架。这是词汇表之外形状的逃生阀——也是今天内置行的*主*路径（`bash`/`read`/`search`/`web`/`write`/`edit`/`ask_user_question`/`todo_write` 已经在按工具注册组件到这个 slot，`GenericToolCard` 是兜底），骨架 PR 会把它们迁移到共享的 render kind 上。
 
-**本 PR 的范围刻意收窄。** 只有第 1 档（兜底）和内置 bash/read/（再一个）实际用到的 render kind（`prompt`/`text`/`lines`/`diff`）现在交付。其余 kind（`kv`/`link`/`json`/`table`/`image`/`notice`）、作为公开契约的第 2 档声明式、以及第 3 档接线都**在类型中预留并推迟**——和递归后门一样，它们标出扩展在哪里接入而不改数据形状，但不在这里实现。原型验证了它们能在骨架内组合（一个自定义 `deploy` 工具用 `kv`+`text`+`link`；image、table、JSON 树作为 OUT kind），这是扩展点足够用的证据——而不是在本 PR 交付它们的承诺。
+**本 PR 的范围刻意收窄。** 只有第 1 档（兜底）和内置 bash/read/（再一个）实际用到的 render kind（`prompt`/`text`/`lines`/`diff`）现在交付。其余 kind（`kv`/`link`/`json`/`table`/`image`/`notice`）、作为公开契约的第 2 档声明式、以及第 3 档接线都**推迟——且不在类型中预声明**：render kind 联合遵循 render-intent 联合的封闭联合纪律（[render-intent-union 笔记](../../implemented/architecture/2026-07-02-tool-render-intent-union.md) 否决了 merge-extensible 联合，因为消费者静默丢弃的变体比封闭联合在 switch 处抛出的编译错误更糟）。每个 kind 随它的渲染器一起交付，新增一个是在骨架 kind switch 处的编译破坏性变更。现在设计好的只是扩展点本身——联合加上骨架的 kind switch——使新增 kind 不需要改数据形状；卡片级的 `ToolResultView` 联合按那篇笔记保持封闭，只有新的 segment 词汇表在这套纪律之下（它遇到未知 kind 时显式回退到 `text`，绝不静默）。原型验证了推迟的 kind 能在骨架内组合（一个自定义 `deploy` 工具用 `kv`+`text`+`link`；image、table、JSON 树作为 OUT kind），这是扩展点足够用的证据——而不是在本 PR 交付它们的承诺。
 
 同样，原型演练过的运行时状态形态——流式追加（蓝灯、OUT 增长）、后台任务（taskId + 一个 `notice` 提示轮询）、中途取消（琥珀色 + 部分输出）、sandbox denial（红色 + `notice`）、需审批的工具（一个 `notice` + 批准/拒绝控件）、以及纯 IN 副作用 Turn（一个只有 IN、完全没有 OUT segment 的 Turn，区别于空 OUT）——都是 seam 必须不阻断的真实形态，但它们的渲染推迟到添加各自行为的 PR。第一个 PR 只保证类型和 seam 不挡住它们。
 
@@ -166,7 +168,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 ## Acceptance criteria
 
-- `ui-primitives` 中存在唯一一套 `Block`/`Turn`/`Segment` 类型和骨架组件；bash 和另一个工具通过它渲染；对这两个工具，当前的四套状态推导被那一个状态灯函数取代。
+- `core/tools/src/presentation.ts` 的 presentation 契约中存在唯一一套 `Block`/`Turn`/`Segment` 类型（与 `ToolResultView` 并列，工具在这里类型化自己的 `presentationMeta` 投影——绝不放 `ui-primitives`，host 侧无法 import 它），`ui-primitives` 中存在骨架组件；bash 和另一个工具通过它渲染；对这两个工具，当前的四套状态推导被那一个状态灯函数取代。
 - bash 通过 `presentationMeta` 承载结构化轮次；它的 `parseExitStatus` 文本往返被移除；面向模型的 bash 文本保持不变（快照）。
 - 多命令和交互式（多轮）bash 渲染为多个 Turn/Segment，在 harness 能观测到每个 Turn 结果处带逐 Turn 状态灯、观测不到处为灰色；单命令情形在视觉上与今天的 `TerminalBlock` 等价（快照）。
 - 每个 Block 一个 gutter 宽度，能对齐每个 Turn 的 body 起始线；行号始终可见；空输出和无输入的 segment 按上述规则折叠。

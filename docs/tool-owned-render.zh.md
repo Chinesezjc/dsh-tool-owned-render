@@ -48,7 +48,7 @@ Block    — one tool call's whole card
 - **bash 可以进一步细分**，因为它有其他工具没有的 exit code：`timedOut`/`aborted` → **琥珀色（warn）**（harness 因为限额或取消而终止了它——命令没有选择余地）；不是来自我们的 timeout/abort 的终止 `signal` → **红色**（崩溃的 `SIGSEGV`，或外部的 `SIGTERM`；我们为超时发出的 `SIGTERM` 已经被琥珀色规则覆盖，所以能走到这里的 signal 都来自外部）；其余情况由 exit code 决定。
 - **灰色（neutral）** 只用在结果确实无法观测的场合——shell 不报告逐轮 exit status 的 REPL 轮次（持久 shell 报告时，已结算轮次与其他执行一样取 done/error），以及一次多命令调用（`echo a; false; echo b`）里非末尾命令没有逐命令状态：harness 每次调用只观测到一个 exit code，而「一次调用跑多条命令且带逐命令状态」在任何地方都不是现有能力。两者都是灰色。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。状态灯出现在 harness 能观测到该单元自身结果的场合——一整次 bash 调用（拼接的多命令调用今天算一个单元，所以整次调用一个灯），或报告逐轮状态的交互式会话的一轮。把一次拼接的多命令调用拆成各带一个灯的逐命令 Turn，是推迟的、类型中不放任何字段的执行器变更——构建时作为与消费者一同落地的编译破坏性扩展，与 render kind 和递归同一纪律。
 
-`warn`（琥珀色）和 `neutral`（灰色）是相对当前 `StateDot` 三状态用法（`done`/`error`/`ongoing`）新增的两个状态；琥珀色的 token 已经存在于 `StateDot.module.css`，但灰色今天既没有 `StateDotState` 成员也没有 CSS 规则，所以两者都要加——`StateDotState` 新增 `neutral` 并配一条匹配规则，作为 1b 骨架的一部分。信号归因只使用 harness 自己的信号，绝不猜测信号由谁发出，因为操作系统不报告发送方。琥珀色输入按通道分开。派发级中止会在 result node 上持久化 `error.info.code` = `ABORTED`（或 `ABORTED_BEFORE_DISPATCH`）（[tools/index.ts:1588/1602](../../../../packages/core/tools/src/index.ts#L1588)）；这个 code 在回放路径上留存（就是今天 `stopped` 行状态读取的同一来源），所以状态灯把它映射为琥珀色，无需新增管线。`timedOut` 住在成功路径的 bash result value 里，presenter 永远看不到它（`presentationMeta` 只在成功路径运行），所以它必须由新的 bash `presentationMeta` 承载。今天唯一无法变琥珀色的形状是 bash 命令中途被中止：bash 重新抛出一个不带区分码的裸 `Error('command aborted')`（[tool-bash/src/index.ts:568](../../../../packages/bash/tool-bash/src/index.ts#L568)），所以回放的客户端只看到 `isError`，渲染为红色。让*那条*路径变琥珀色，需要 bash 中止路径持久化一个可区分的 code——一个推迟的执行器变更——在它落地之前，本文不为 bash 中途中止承诺琥珀色。
+`warn`（琥珀色）和 `neutral`（灰色）是相对当前 `StateDot` 三状态用法（`done`/`error`/`ongoing`）新增的两个状态；琥珀色的 token 已经存在于 `StateDot.module.css`，但灰色今天既没有 `StateDotState` 成员也没有 CSS 规则，所以两者都要加——`StateDotState` 新增 `neutral` 并配一条匹配规则，作为 1b 骨架的一部分。信号归因只使用 harness 自己的信号，绝不猜测信号由谁发出，因为操作系统不报告发送方。琥珀色输入按通道分开。派发级中止会在 result node 上持久化 `error.info.code` = `ABORTED`（或 `ABORTED_BEFORE_DISPATCH`）（[tools/index.ts:1588/1602](../../../../packages/core/tools/src/index.ts#L1588)）；这个 code 在回放路径上留存（就是今天 `stopped` 行状态读取的同一来源），所以状态灯把它映射为琥珀色，无需新增管线。`timedOut` 住在成功路径的 bash result value 里，presenter 永远看不到它（`presentationMeta` 只在成功路径运行），所以它必须由新的 bash `presentationMeta` 承载。bash 命令中途被中止也得到同样的归因：工具抛出 `HarnessError('tool call aborted', TOOL_ABORTED)`（[tool-bash/src/index.ts:385](../../../../packages/bash/tool-bash/src/index.ts#L385)，`exec.signal.aborted` 的派发前分支在 :360），所以那里持久化的 code 也是 `ABORTED`，状态灯在回放时直接映射为琥珀色，无需推迟的变更。
 
 与今天的 `StateDot` 一样，状态灯只有颜色语义且 `aria-hidden`；每个灯都配一段可访问的状态文本（沿用行的 `stateStatus` 模式），使 done/error/running/warn/neutral 在无色觉或使用屏幕阅读器时依然可分辨。
 
@@ -144,7 +144,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 **PR 3 — 侧边预览面板。** 可调宽的侧边预览面板*以及*打开它的 `⤢` 展开按钮，是一个独立的、优先级更低的增强，放在各自的 PR、依赖骨架 PR。它在一个右侧停靠、可拖拽调宽、单例（点击替换）的容器里复用骨架的 Segment 渲染，演进自今天的 `DetailsPanel` Output 面板；二级展开把面板带到真正的全屏（scroll-lock、主题化滚动条）。骨架 PR 既不渲染也不引用它；展开按钮只在这个 PR 里出现。
 
-**后续** — 推迟的扩展点（声明式 render kind 第 2 档、非文件 render kind `kv`/`link`/`json`/`table`/`image`/`notice`、第 3 档自定义渲染器、`Turn`/`Block` 递归、各行为对应的状态形态、两个推迟的 bash 执行器变更——把一次拼接的多命令调用采集为逐命令 Turn，以及持久交互式 shell 的逐轮状态——以及能让 bash 中途中止变琥珀色的可区分 code 持久化）在其服务的行为被构建时，作为各自的 PR 落地。
+**后续** — 推迟的扩展点（声明式 render kind 第 2 档、非文件 render kind `kv`/`link`/`json`/`table`/`image`/`notice`、第 3 档自定义渲染器、`Turn`/`Block` 递归、各行为对应的状态形态、两个推迟的 bash 执行器变更——把一次拼接的多命令调用采集为逐命令 Turn，以及持久交互式 shell 的逐轮状态）在其服务的行为被构建时，作为各自的 PR 落地。
 
 本文对应的工作是 PR 1，它本身是一个四层 PR 栈（1a–1d）；PR 2（全量迁移，一叠按工具组拆分的 PR）先于 PR 3（侧边预览面板）。
 
@@ -181,7 +181,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 - **wire 数据不可信。** `sessions.schema.ts` 只校验 `for` 和 `card: string`；现有的每个 card-model 都会再做一次防御性收窄。统一后的 wire→props 层**必须**保留逐工具的收窄，否则一个畸形载荷会让某一行或详情面板崩溃。
 - **回放纯度。** presenter 同时运行在实时路径和回放路径上，必须保持为 args（+ result meta）的纯函数，不做 I/O、不读时钟、不读会话状态（[adding-a-tool.md](../../../../docs/cookbook/adding-a-tool.md)）。状态灯推导和 segment 构造器必须遵守这一点。
 - **手写的 UI 机制。** 原型手绘了一个 overlay 滚动条、手写了高亮的 tokenizer；交付的组件改为复用 ui-theme 的主题化滚动条 token 间接层（而非手绘滑块）和仓库自己的 shiki 集成，从而不会重新引入本文所警告的边界情况负担（命中测试、拖拽、惯性、两套配色）。
-- **放弃了什么。** 状态统一意味着今天在卡片内*不*显示状态的那五张卡片会获得一个状态灯；对确实无法观测的结果，诚实的取值是灰色——抽象不得为它无法观测的东西制造出绿色的「成功」（这与状态灯和 gutter 共同遵循的「可观测才显示，否则省略」原则一致）。具体地说，在推迟的执行器变更落地之前放弃三项 bash 细化：把一次拼接的多命令调用采集为逐命令 Turn、持久交互式 shell 的逐轮状态、以及 bash 中途中止的琥珀色；在此之前，一次多命令调用是一个带一个灯的 Turn，中途中止渲染为红色。
+- **放弃了什么。** 状态统一意味着今天在卡片内*不*显示状态的那五张卡片会获得一个状态灯；对确实无法观测的结果，诚实的取值是灰色——抽象不得为它无法观测的东西制造出绿色的「成功」（这与状态灯和 gutter 共同遵循的「可观测才显示，否则省略」原则一致）。具体地说，在推迟的执行器变更落地之前放弃两项 bash 细化：把一次拼接的多命令调用采集为逐命令 Turn、持久交互式 shell 的逐轮状态；在此之前，一次多命令调用是一个带一个灯的 Turn（中途中止今天就是琥珀色，因为 bash 持久化 `ABORTED`）。
 - **AGENTS.md 已经过时。** [AGENTS.md:116](../../../../AGENTS.md#L116) 仍然列着三种卡片类型；render-intent 联合类型已经有六种。这项工作应在同一个 PR 中更新那一行以及 render-intent 的设计说明。
 
 ## 取代

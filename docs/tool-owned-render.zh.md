@@ -28,13 +28,13 @@ web UI 里每一张工具结果卡片都是一个各自独立的 primitive：自
 
 ```
 Block    — one tool call's whole card
- └─ Turn  — one IN/OUT pair + one lamp — bash: one per command; REPL: one per round
+ └─ Turn  — one IN/OUT pair + one lamp — one observable execution unit
      ├─ Segment (IN)  — this operation's input representation
      └─ Segment (OUT) — its output; a tool may emit more than one (grep: matches
                         + recovery locator; web_fetch: status line + body)
 ```
 
-`Block` *不是*一个列表；它是持有一组 `Turn` 的卡片对象；每个 `Turn` 持有它自己的 `Segment`。UI 中外层的 List-of-Blocks 是每次工具调用一个 `Block`。这个命名刻意与它所取代的 `*Block` 原语命名族区分层级（`TerminalBlock` 等是叶子渲染器；`Block` 是由骨架绘制的数据容器）——同样，这里的 `Turn` 指一张卡片里的一条命令或一轮 stdin，区别于会话模型里的 `Turn`（一次助手循环迭代，`turn/start`/`turn/end`）。
+`Block` *不是*一个列表；它是持有一组 `Turn` 的卡片对象；每个 `Turn` 持有它自己的 `Segment`。UI 中外层的 List-of-Blocks 是每次工具调用一个 `Block`。这个命名刻意与它所取代的 `*Block` 原语命名族区分层级（`TerminalBlock` 等是叶子渲染器；`Block` 是由骨架绘制的数据容器）——而这里的 `Turn` 指一张卡片的一个*可观测执行单元*，区别于会话模型里的 `Turn`（一次助手循环迭代，`turn/start`/`turn/end`）。一个单元就是 harness 能把单个结果归因于它的东西：今天那是一整次 bash 调用（拼接的多命令调用也算一次）、或者对报告逐轮状态的交互式 shell 而言的一轮 stdin；把一次拼接的多命令调用拆成逐命令 Turn 是推迟的执行器变更（见 §状态灯）。
 
 词汇刻意保持工具中立：字段名**不是** shell 词汇（`command`/`cwd`/`exitCode`），因为同一套骨架还要承载一次文件读取、一份 diff、一个搜索查询和一个被抓取的 URL。每个工具为自己的 IN 载荷和 OUT 载荷提供渲染器；骨架只知道 `Segment`、`role: 'in' | 'out'`、一个可选的 `lamp`，以及工具提供的渲染。
 
@@ -46,11 +46,11 @@ Block    — one tool call's whole card
 - **error → 红色。** 工具报告了 `isError`。
 - **running → 蓝色**（`ongoing` 的 pixel-chase 点）。
 - **bash 可以进一步细分**，因为它有其他工具没有的 exit code：`timedOut`/`aborted` → **琥珀色（warn）**（harness 因为限额或取消而终止了它——命令没有选择余地）；不是来自我们的 timeout/abort 的终止 `signal` → **红色**（崩溃的 `SIGSEGV`，或外部的 `SIGTERM`；我们为超时发出的 `SIGTERM` 已经被琥珀色规则覆盖，所以能走到这里的 signal 都来自外部）；其余情况由 exit code 决定。
-- **灰色（neutral）** 只用在结果确实无法观测的场合——shell 不报告逐轮 exit status 的 REPL 轮次（持久 shell 报告时，已结算轮次与其他执行一样取 done/error），以及一次多命令调用（`echo a; false; echo b`）里非末尾命令没有逐命令状态：harness 每次调用只观测到一个 exit code，而「一次调用跑多条命令且带逐命令状态」在任何地方都不是现有能力。两者都是灰色。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。因此逐 Turn 灯只出现在 harness 能观测到该 Turn 自身结果的场合——单命令调用，或交互式会话的一轮。采集逐命令状态（执行器变更）被推迟，类型中不放任何字段——构建时作为与消费者一同落地的编译破坏性扩展，与 render kind 和递归同一纪律——它会把多命令调用的中间 Turn 从灰色升级为有灯。
+- **灰色（neutral）** 只用在结果确实无法观测的场合——shell 不报告逐轮 exit status 的 REPL 轮次（持久 shell 报告时，已结算轮次与其他执行一样取 done/error），以及一次多命令调用（`echo a; false; echo b`）里非末尾命令没有逐命令状态：harness 每次调用只观测到一个 exit code，而「一次调用跑多条命令且带逐命令状态」在任何地方都不是现有能力。两者都是灰色。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。状态灯出现在 harness 能观测到该单元自身结果的场合——一整次 bash 调用（拼接的多命令调用今天算一个单元，所以整次调用一个灯），或报告逐轮状态的交互式会话的一轮。把一次拼接的多命令调用拆成各带一个灯的逐命令 Turn，是推迟的、类型中不放任何字段的执行器变更——构建时作为与消费者一同落地的编译破坏性扩展，与 render kind 和递归同一纪律。
 
-`warn`（琥珀色）是相对当前 `StateDot` 三状态用法唯一新增的状态；对应的 token 已经存在（[StateDot.module.css](../../../../packages/client/ui-primitives/src/StateDot.module.css)）。信号归因只使用 harness 自己的信号，绝不猜测信号由谁发出，因为操作系统不报告发送方。琥珀色输入按通道分开。中途消失的调用会得到客户端合成的 `error.code: 'interrupted'` result node——今天行的 `stopped` 状态的来源，事件流的纯函数，在回放路径上也运行（history-fold.ts）——状态灯把它映射为琥珀色。`timedOut` 住在成功路径的 bash result value 里，presenter 永远看不到它（`presentationMeta` 只在成功路径运行），所以它必须由新的 bash `presentationMeta` 承载。*已结算的*中止则不同：harness 对派发级中止持久化 `code: 'ABORTED'`，bash 中途中止持久化的是不带区分码的裸 `Error('command aborted')`——今天的回放客户端都无法把二者归因为琥珀色，所以已结算的中止渲染为红色。让它变琥珀色需要 bash 中止路径持久化可区分的归因——一个与逐命令采集同类的推迟的执行器变更——在它落地之前，本文不为已结算中止承诺琥珀色。
+`warn`（琥珀色）和 `neutral`（灰色）是相对当前 `StateDot` 三状态用法（`done`/`error`/`ongoing`）新增的两个状态；琥珀色的 token 已经存在于 `StateDot.module.css`，但灰色今天既没有 `StateDotState` 成员也没有 CSS 规则，所以两者都要加——`StateDotState` 新增 `neutral` 并配一条匹配规则，作为 1b 骨架的一部分。信号归因只使用 harness 自己的信号，绝不猜测信号由谁发出，因为操作系统不报告发送方。琥珀色输入按通道分开。派发级中止会在 result node 上持久化 `error.info.code` = `ABORTED`（或 `ABORTED_BEFORE_DISPATCH`）（[tools/index.ts:1588/1602](../../../../packages/core/tools/src/index.ts#L1588)）；这个 code 在回放路径上留存（就是今天 `stopped` 行状态读取的同一来源），所以状态灯把它映射为琥珀色，无需新增管线。`timedOut` 住在成功路径的 bash result value 里，presenter 永远看不到它（`presentationMeta` 只在成功路径运行），所以它必须由新的 bash `presentationMeta` 承载。今天唯一无法变琥珀色的形状是 bash 命令中途被中止：bash 重新抛出一个不带区分码的裸 `Error('command aborted')`（[tool-bash/src/index.ts:568](../../../../packages/bash/tool-bash/src/index.ts#L568)），所以回放的客户端只看到 `isError`，渲染为红色。让*那条*路径变琥珀色，需要 bash 中止路径持久化一个可区分的 code——一个推迟的执行器变更——在它落地之前，本文不为 bash 中途中止承诺琥珀色。
 
-与今天的 `StateDot` 一样，状态灯只有颜色语义且 `aria-hidden`；每个灯都配一段可访问的状态文本（沿用行的 `stateStatus` 模式），使 done/error/running/warn 在无色觉或使用屏幕阅读器时依然可分辨。
+与今天的 `StateDot` 一样，状态灯只有颜色语义且 `aria-hidden`；每个灯都配一段可访问的状态文本（沿用行的 `stateStatus` 模式），使 done/error/running/warn/neutral 在无色觉或使用屏幕阅读器时依然可分辨。
 
 ### 卡片内部不放动词标签
 
@@ -61,7 +61,7 @@ Block    — one tool call's whole card
 每个 Segment 都是一个两列网格 `[gutter][body]`。gutter 的内容**按 role 互斥**：
 
 - IN segment → **状态灯**（左对齐，固定在最左侧）。IN segment **永远不带行号**，即便它有很多行（heredoc 运行整个脚本、大段 `write` content、大 args JSON）：它的每一行是操作的输入，不是文件内容，所以没有「第 N 行」。只有状态灯占据它首行的 gutter，其余每一 IN 行的 gutter 都留空。
-- OUT segment → **行号**（右对齐，紧贴 body 行），只供展示*文件内容*的 OUT 使用：read（文件行号）、grep（命中文件的行号）、diff（真实的旧/新行号——gutter 显示真实行号，**不是** `+`/`-` 标记；删除为红、新增为绿，同时给行号和 body 上色；被删除的行和它的替换行可能显示同一个行号，这种并排重复是可接受的，而不引入旧/新两列 gutter）。真实行号要求 diff 载荷携带它们：今天的 `FileDiff` 只有 `path`/`oldText`/`newText`，hunk 计算还丢弃 `oldStart`/`newStart`，所以 diff render kind 在 presentation 契约中扩展该载荷、带上旧/新起始行（PR 1a 类型）。非文件 OUT（bash 输出、web 正文、args JSON、自定义工具的文本）没有行号，让 gutter 留空。
+- OUT segment → **行号**（右对齐，紧贴 body 行），只供展示*文件内容*的 OUT 使用：read（文件行号）、grep（命中文件的行号）、diff（真实的旧/新行号——gutter 显示真实行号，**不是** `+`/`-` 标记；删除为红、新增为绿，同时给行号和 body 上色；被删除的行和它的替换行可能显示同一个行号，这种并排重复是可接受的，而不引入旧/新两列 gutter）。真实行号要求 diff 载荷携带它们：今天的 `FileDiff` 只有 `path`/`oldText`/`newText`，hunk 计算还丢弃 `oldStart`/`newStart`，所以 diff render kind 在 presentation 契约中扩展该载荷、带上旧/新起始行（PR 1a 类型）。*运行中*的 edit 的 call-time diff 由一个纯 `presentCall` 仅从 args 构造——它读不到文件、也不知道替换内容的位置——所以它不带行号，其 gutter 保持为空，直到工具结算并带回应用后的 hunk。非文件 OUT（bash 输出、web 正文、args JSON、自定义工具的文本）没有行号，让 gutter 留空。
 
 因为状态灯在 IN segment 上、行号在 OUT segment 上，「一列、互斥」自然成立——任何一个 segment 的 gutter 都只有一种内容。
 
@@ -94,7 +94,7 @@ Block    — one tool call's whole card
 |---|---|---|---|
 | bash（1 条命令） | 提示符行：cwd + command | 输出文本（无行号） | exit/signal/timeout/abort |
 | bash（N 条命令） | 每条命令一条提示符行 | 调用合并后的输出 | 今天整次调用一个灯（harness 每次调用只观测到一个 exit）；逐命令 Turn 带逐命令灯需要推迟的执行器变更（见 §状态灯） |
-| bash（REPL） | 每轮 stdin 一个 Turn，`>>>` 提示符 | 该轮的输出 | 活动轮蓝色；shell 报告逐轮 exit status 时已结算轮取 done/error，否则灰色 |
+| bash（交互式） | 每轮一条提示符行，`>>>` 提示符 | 该轮的输出 | 持久 shell 报告逐轮状态处每轮一个灯（活动轮蓝色，已结算取 done/error）；不报告处为灰色——持久 shell 的逐轮 Turn 是推迟的执行器变更（见 §状态灯） |
 | read | 路径 + 行范围 | 带行号的文件行 | done/error |
 | write | `path` | 应用后的 diff，真实的新行号 | done/error |
 | edit | `path` | 应用后的 diff，真实的旧/新行号 | done/error |
@@ -144,7 +144,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 **PR 3 — 侧边预览面板。** 可调宽的侧边预览面板*以及*打开它的 `⤢` 展开按钮，是一个独立的、优先级更低的增强，放在各自的 PR、依赖骨架 PR。它在一个右侧停靠、可拖拽调宽、单例（点击替换）的容器里复用骨架的 Segment 渲染，演进自今天的 `DetailsPanel` Output 面板；二级展开把面板带到真正的全屏（scroll-lock、主题化滚动条）。骨架 PR 既不渲染也不引用它；展开按钮只在这个 PR 里出现。
 
-**后续** — 推迟的扩展点（声明式 render kind 第 2 档、非文件 render kind `kv`/`link`/`json`/`table`/`image`/`notice`、第 3 档自定义渲染器、`Turn`/`Block` 递归，以及各行为对应的状态形态）在其服务的行为被构建时，作为各自的 PR 落地。
+**后续** — 推迟的扩展点（声明式 render kind 第 2 档、非文件 render kind `kv`/`link`/`json`/`table`/`image`/`notice`、第 3 档自定义渲染器、`Turn`/`Block` 递归、各行为对应的状态形态、两个推迟的 bash 执行器变更——把一次拼接的多命令调用采集为逐命令 Turn，以及持久交互式 shell 的逐轮状态——以及能让 bash 中途中止变琥珀色的可区分 code 持久化）在其服务的行为被构建时，作为各自的 PR 落地。
 
 本文对应的工作是 PR 1，它本身是一个四层 PR 栈（1a–1d）；PR 2（全量迁移，一叠按工具组拆分的 PR）先于 PR 3（侧边预览面板）。
 
@@ -169,8 +169,8 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 ## 验收标准
 
 - `core/tools/src/presentation.ts` 的 presentation 契约中存在唯一一套 `Block`/`Turn`/`Segment` 类型（与 `ToolResultView` 并列，工具在这里类型化自己的 `presentationMeta` 投影——绝不放 `ui-primitives`，host 侧无法 import 它），`ui-primitives` 中存在骨架组件；bash 和另一个工具通过它渲染；对这两个工具，当前的四套状态推导被那一个状态灯函数取代。
-- bash 通过 `presentationMeta` 承载结构化轮次；它的 `parseExitStatus` 文本往返被移除；面向模型的 bash 文本保持不变（快照）。
-- 多命令和交互式（多轮）bash 渲染为多个 Turn/Segment，在 harness 能观测到每个 Turn 结果处带逐 Turn 状态灯、观测不到处为灰色；单命令情形在视觉上与今天的 `TerminalBlock` 等价（快照）。
+- bash 通过 `presentationMeta` 承载结构化的单命令结果；它的 `parseExitStatus` 文本往返被移除；面向模型的 bash 文本保持不变（快照）。
+- 单命令 bash 调用渲染为一个 Turn；一次拼接的多命令调用也是一个 Turn（逐命令 Turn 是推迟的执行器变更）；单命令情形在视觉上与今天的 `TerminalBlock` 等价（快照）。
 - 每个 Block 一个 gutter 宽度，能对齐每个 Turn 的 body 起始线；行号始终可见；空输出和无输入的 segment 按上述规则折叠。
 - 逐 segment 的 IN/OUT 复制可用（本 PR 控件组只带复制；展开按钮和侧边预览面板是独立 PR）；类型中不存在 `Turn`/`Block` 递归字段（与它的渲染器一同推迟）。
 - 完整的测试矩阵在 PR 1 整体交付（unit per-file 100%、real-API e2e、keyless 快照、适用的 web browser 快照、smoke、CI gates、sandbox），其中包含一条通过真实可运行示例、断言组装后 transcript 的 keyless 快照。覆盖集中在 1c/1d（首批有真实工具产出 transcript 的 PR）；1a/1b 按迁移节所述带它们能带的测试。
@@ -181,9 +181,9 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 - **wire 数据不可信。** `sessions.schema.ts` 只校验 `for` 和 `card: string`；现有的每个 card-model 都会再做一次防御性收窄。统一后的 wire→props 层**必须**保留逐工具的收窄，否则一个畸形载荷会让某一行或详情面板崩溃。
 - **回放纯度。** presenter 同时运行在实时路径和回放路径上，必须保持为 args（+ result meta）的纯函数，不做 I/O、不读时钟、不读会话状态（[adding-a-tool.md](../../../../docs/cookbook/adding-a-tool.md)）。状态灯推导和 segment 构造器必须遵守这一点。
 - **手写的 UI 机制。** 原型手绘了一个 overlay 滚动条、手写了高亮的 tokenizer；交付的组件改为复用 ui-theme 的主题化滚动条 token 间接层（而非手绘滑块）和仓库自己的 shiki 集成，从而不会重新引入本文所警告的边界情况负担（命中测试、拖拽、惯性、两套配色）。
-- **放弃了什么。** 状态统一意味着今天在卡片内*不*显示状态的那五张卡片会获得一个状态灯；对确实无法观测的结果，诚实的取值是灰色——抽象不得为它无法观测的东西制造出绿色的「成功」（这与状态灯和 gutter 共同遵循的「可观测才显示，否则省略」原则一致）。
+- **放弃了什么。** 状态统一意味着今天在卡片内*不*显示状态的那五张卡片会获得一个状态灯；对确实无法观测的结果，诚实的取值是灰色——抽象不得为它无法观测的东西制造出绿色的「成功」（这与状态灯和 gutter 共同遵循的「可观测才显示，否则省略」原则一致）。具体地说，在推迟的执行器变更落地之前放弃三项 bash 细化：把一次拼接的多命令调用采集为逐命令 Turn、持久交互式 shell 的逐轮状态、以及 bash 中途中止的琥珀色；在此之前，一次多命令调用是一个带一个灯的 Turn，中途中止渲染为红色。
 - **AGENTS.md 已经过时。** [AGENTS.md:116](../../../../AGENTS.md#L116) 仍然列着三种卡片类型；render-intent 联合类型已经有六种。这项工作应在同一个 PR 中更新那一行以及 render-intent 的设计说明。
 
 ## 取代
 
-本提案取代各卡片的自定义渲染器及其推导层，因此它修订拥有这些决策的 Agent Note。是部分取代，不是全部：presentation 契约、wire 词汇和 generic 兜底都保留。被本工作取代的笔记是 render-intent 联合（[2026-07-02-tool-render-intent-union.md](../../implemented/architecture/2026-07-02-tool-render-intent-union.md)）和逐卡片记录（[2026-07-28-web-terminal-card.md](../../implemented/feature/2026-07-28-web-terminal-card.md)、[2026-07-30-web-read-card.md](../../implemented/feature/2026-07-30-web-read-card.md)、[2026-07-30-web-read-card-frontend.md](../../implemented/feature/2026-07-30-web-read-card-frontend.md)、[2026-07-30-web-search-card.md](../../implemented/feature/2026-07-30-web-search-card.md)、[2026-07-30-web-diff-card.md](../../implemented/feature/2026-07-30-web-diff-card.md)、[2026-07-30-search-render-card.md](../../implemented/feature/2026-07-30-search-render-card.md)、[2026-07-30-web-result-card.md](../../implemented/feature/2026-07-30-web-result-card.md)、[2026-07-30-web-result-card-frontend.md](../../implemented/feature/2026-07-30-web-result-card-frontend.md)、[2026-07-31-web-cards-toolrow.md](../../implemented/feature/2026-07-31-web-cards-toolrow.md)）。按笔记政策的部分取代规则，每一篇在本工作落地处（PR 2）更新而不是合并。
+本提案取代各卡片的自定义渲染器及其推导层，因此它修订拥有这些决策的 Agent Note。是部分取代，不是全部：presentation 契约、wire 词汇和 generic 兜底都保留。被本工作取代的笔记是 render-intent 联合（[2026-07-02-tool-render-intent-union.md](../../implemented/architecture/2026-07-02-tool-render-intent-union.md)）和逐卡片记录（[2026-07-28-web-terminal-card.md](../../implemented/feature/2026-07-28-web-terminal-card.md)、[2026-07-30-web-read-card.md](../../implemented/feature/2026-07-30-web-read-card.md)、[2026-07-30-web-read-card-frontend.md](../../implemented/feature/2026-07-30-web-read-card-frontend.md)、[2026-07-30-web-search-card.md](../../implemented/feature/2026-07-30-web-search-card.md)、[2026-07-30-web-diff-card.md](../../implemented/feature/2026-07-30-web-diff-card.md)、[2026-07-30-search-render-card.md](../../implemented/feature/2026-07-30-search-render-card.md)、[2026-07-30-web-result-card.md](../../implemented/feature/2026-07-30-web-result-card.md)、[2026-07-30-web-result-card-frontend.md](../../implemented/feature/2026-07-30-web-result-card-frontend.md)、[2026-07-31-web-cards-toolrow.md](../../implemented/feature/2026-07-31-web-cards-toolrow.md)）。按笔记政策的部分取代规则，每一篇在本工作落地处（PR 2）更新而不是合并；同一次 PR 2 变更也为每篇被取代的笔记加上指回本提案的反向链接，因此在取代它的代码落地那一刻交叉链接即为双向。

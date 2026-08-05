@@ -34,7 +34,7 @@ Block    — one tool call's whole card
                         + recovery locator; web_fetch: status line + body)
 ```
 
-`Block` *不是*一个列表；它是持有一组 `Turn` 的卡片对象；每个 `Turn` 持有它自己的 `Segment`。UI 中外层的 List-of-Blocks 是每次工具调用一个 `Block`。这个命名刻意与它所取代的 `*Block` 原语命名族区分层级（`TerminalBlock` 等是叶子渲染器；`Block` 是由骨架绘制的数据容器）——而这里的 `Turn` 指一张卡片的一个*可观测执行单元*，区别于会话模型里的 `Turn`（一次助手循环迭代，`turn/start`/`turn/end`）。一个单元就是 harness 能把单个结果归因于它的东西：今天那是一整次 bash 调用（拼接的多命令调用也算一次）、或者对报告逐轮状态的交互式 shell 而言的一轮 stdin；把一次拼接的多命令调用拆成逐命令 Turn 是推迟的执行器变更（见 §状态灯）。
+`Block` *不是*一个列表；它是持有一组 `Turn` 的卡片对象；每个 `Turn` 持有它自己的 `Segment`。UI 中外层的 List-of-Blocks 是每次工具调用一个 `Block`。这个命名刻意与它所取代的 `*Block` 原语命名族区分层级（`TerminalBlock` 等是叶子渲染器；`Block` 是由骨架绘制的数据容器）——而这里的 `Turn` 指一张卡片的一个*可观测执行单元*，区别于会话模型里的 `Turn`（一次助手循环迭代，`turn/start`/`turn/end`）。一个单元就是 harness 能把单个结果归因于它的东西：今天那是一整次 bash 调用（拼接的多命令调用也算一次）；交互式 shell 的每一轮已经是独立的调用，因而是独立的单元。两项能力被推迟、不在此构建：把一次拼接的多命令调用拆成逐命令 Turn（执行器变更），以及把同一个 shell 的若干轮折叠进一个分组 Block（会话级分组）（见 §状态灯）。
 
 词汇刻意保持工具中立：字段名**不是** shell 词汇（`command`/`cwd`/`exitCode`），因为同一套骨架还要承载一次文件读取、一份 diff、一个搜索查询和一个被抓取的 URL。每个工具为自己的 IN 载荷和 OUT 载荷提供渲染器；骨架只知道 `Segment`、`role: 'in' | 'out'`、一个可选的 `lamp`，以及工具提供的渲染。
 
@@ -45,7 +45,7 @@ Block    — one tool call's whole card
 - **`isError === false` → 绿色（done）。** 操作无错误地完成——完成本身就是那个可观测信号。这是*每一个*工具的基础规则：一次读取、一次写入、一次单纯成功的搜索都是绿色。除了「它结束了且没有报错」之外，不制造额外的「成功」含义。
 - **error → 红色。** 工具报告了 `isError`。
 - **running → 蓝色**（`ongoing` 的 pixel-chase 点）。
-- **bash 可以进一步细分**，因为它有其他工具没有的 exit code：`timedOut` → **琥珀色（warn）**；`aborted` → 在 harness 持久化了可区分 code（经 `HarnessError` 的 `ABORTED`）处为琥珀色——持久 shell 的逐轮中止、它的调用方中止、以及 raw-PTY 的发送中止今天抛出时都不带 code，在各自的 PR 落地前渲染为红色（harness 因为限额或取消而终止了它——命令没有选择余地）；不是来自我们的 timeout/abort 的终止 `signal` → **红色**（崩溃的 `SIGSEGV`，或外部的 `SIGTERM`；我们为超时发出的 `SIGTERM` 已经被琥珀色规则覆盖，所以能走到这里的 signal 都来自外部）；其余情况由 exit code 决定。
+- **bash 可以进一步细分**，因为它有其他工具没有的 exit code：`timedOut` → **琥珀色（warn）**；`aborted` → 在 harness 持久化了可区分 code（经 `HarnessError` 的 `ABORTED`）处为琥珀色——持久 shell 的逐轮中止、它的调用方中止、以及 raw-PTY 的发送中止今天抛出时都不带 code，在各自的 PR 落地前渲染为红色（harness 因为限额或取消而终止了它——命令没有选择余地）。同一细分规则覆盖其他终端卡工具：`tool-pwsh` 携带相同的 exit/signal/timeout 字段，非零退出与 bash 一样以 `isError: false` 结算，所以它的灯以同样方式读 exit code；不是来自我们的 timeout/abort 的终止 `signal` → **红色**（崩溃的 `SIGSEGV`，或外部的 `SIGTERM`；我们为超时发出的 `SIGTERM` 已经被琥珀色规则覆盖，所以能走到这里的 signal 都来自外部）；其余情况由 exit code 决定。
 - **灰色（neutral）** 只用在结果确实无法观测的场合——shell 不报告逐轮 exit status 的交互式 shell 轮次（持久 shell 报告时，已结算轮次与其他执行一样取 done/error）。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。状态灯出现在 harness 能观测到该单元自身结果的场合——一整次 bash 调用（拼接的多命令调用今天算一个单元，所以整次调用一个灯），或报告逐轮状态的交互式会话的一轮。把一次拼接的多命令调用拆成各带一个灯的逐命令 Turn，是推迟的、类型中不放任何字段的执行器变更——构建时作为与消费者一同落地的编译破坏性扩展，与 render kind 和递归同一纪律。
 
 `warn`（琥珀色）和 `neutral`（灰色）是相对当前 `StateDot` 三状态用法（`done`/`error`/`ongoing`）新增的两个状态；琥珀色的 token 已经存在于 `StateDot.module.css`，但灰色今天既没有 `StateDotState` 成员也没有 CSS 规则，所以两者都要加——`StateDotState` 新增 `neutral` 并配一条匹配规则，作为 1b 骨架的一部分。信号归因只使用 harness 自己的信号，绝不猜测信号由谁发出，因为操作系统不报告发送方。琥珀色输入按通道分开。派发级中止会在 result node 上持久化 `error.info.code` = `ABORTED`（或 `ABORTED_BEFORE_DISPATCH`）（[tools/index.ts:1588/1602](../../../../packages/core/tools/src/index.ts#L1588)）；这个 code 持久化在已结算的 result node 上、在回放中留存，所以状态灯把它映射为琥珀色，无需新增管线（这个 `ABORTED` code 区别于 `stopped` 行状态所读的、客户端合成的 `interrupted` code——后者见 [tool-call-model.ts:215](../../../../packages/client/ui-conversation/src/client/contract/tool-call-model.ts#L215)，在一次 call 因 turn 中断而未结算时合成，见 [history-fold.ts:304](../../../../packages/client/runtime/src/client/session-history/history-fold.ts#L304)）。`timedOut` 住在成功路径的 bash result value 里，presenter 永远看不到它（`presentationMeta` 只在成功路径运行），所以它必须由新的 bash `presentationMeta` 承载。单 shell 的 bash 命令中途被中止也得到同样的归因：工具抛出 `HarnessError('tool call aborted', TOOL_ABORTED)`（[tool-bash/src/index.ts:385](../../../../packages/bash/tool-bash/src/index.ts#L385)，`exec.signal.aborted` 的派发前分支在 :360），所以那里持久化的 code 也是 `ABORTED`，状态灯在回放时直接映射为琥珀色，无需推迟的变更。有三种已结算的中止形状仍然 code-less，在各自的 PR 落地前渲染为红色：持久 shell 的逐轮中止抛出 deadline signal 的 reason、不带 code（[tool-bash-persistent/src/index.ts:322-324](../../../../packages/pty/tool-bash-persistent/src/index.ts#L322)），它的调用方中止同理（`exec.signal.throwIfAborted()`，在 :393），raw-PTY 的发送中止抛出裸 `Error('terminal send aborted')`（[tool-pty/src/index.ts:279](../../../../packages/pty/tool-pty/src/index.ts#L279)）。让它们变琥珀色需要每条各自持久化一个可区分的 code——一项逐路径推迟的变更——在此之前它们诚实地渲染为红色，而不是制造一个琥珀色。
@@ -94,7 +94,7 @@ Block    — one tool call's whole card
 |---|---|---|---|
 | bash（1 条命令） | 提示符行：cwd + command | 输出文本（无行号） | exit/signal/timeout/abort |
 | bash（N 条命令） | 每条命令一条提示符行 | 调用合并后的输出 | 今天整次调用一个灯（harness 每次调用只观测到一个 exit）；逐命令 Turn 带逐命令灯需要推迟的执行器变更（见 §状态灯） |
-| bash（交互式） | 该轮的提示符行 | 该轮的输出 | 由该轮自己的 `[exit code: N]` 得 done/error（仅在 shell 不报告时为灰色）——每一轮本就是一次独立的 `bash` tool call、也是自己的一个 Block；把同一 shell 的多轮折叠进单个分组 Block 是推迟的 session 级轮次分组（见 §状态灯） |
+| bash（交互式） | 该轮的提示符行 | 该轮的输出 | 每一轮都是一次独立的 `bash` tool call 和自己的 Block，但逐轮 done/error 需要结构化通道：今天轮次的 exit code 只以模型文本 `[exit code: N]` 标记落盘、且仅非零退出才追加（tool-bash-persistent 的 render 没有 `presentationMeta`），所以纯 presenter 只能重建失败的轮次——成功的轮次保持灰色，直到持久工具获得结构化的轮次结果（推迟的变更，见 §状态灯）；把同一 shell 的多轮折叠进单个分组 Block 是推迟的 session 级轮次分组 |
 | read | 路径 + 行范围 | 带行号的文件行 | done/error |
 | write | `path` | 应用后的 diff，真实的新行号 | done/error |
 | edit | `path` | 应用后的 diff，真实的旧/新行号 | done/error |
@@ -135,12 +135,12 @@ Block    — one tool call's whole card
 
 1. **类型 + presentation 契约。** 共享的 `Block`/`Turn`/`Segment` 类型和扩展后的 `ToolResultView`，含一个只装已实现 kind（`prompt`/`text`/`lines`/`diff`）的封闭 render kind union，放在 `@deepseek-ai/dsh-tools`——即已经拥有 `ToolResultView` 和 `presentationMeta`、且被值的生产方（`bash`、`read` 等）依赖的中性工具契约层。React 叶子包 `ui-primitives` 只拥有渲染这些类型的组件，绝不拥有类型本身，因此没有生产方需要反向依赖客户端叶子包，也不存在「唯一一套类型」的第二份声明。纯类型；只有 unit 测试——此时还没有组装后 transcript 快照，因为在 1c 之前没有工具产出它。
 2. **骨架组件**（`ui-primitives` 中，即五张卡片一直预期存在的那个 `CardShell`）：统一的状态灯推导、自适应 gutter、逐 segment 滚动 + 主题化滚动条、逐 segment 复制（控件组**只带复制**）。组件 unit + 渲染快照。
-3. **bash** 迁移：单命令调用渲染为一个 Turn，并有一个新的 bash `presentationMeta` 承载结构化的单命令结果（command、cwd、output、exit/signal/timeout）。拼接的多命令调用的逐命令 Turn 是推迟的执行器变更（见 §状态灯、§表格）——不在 1c 构建；这里多命令调用保持一个 Turn。持久交互式 shell 本就每轮发出一次带自己 `[exit code: N]` 的 `bash` tool call，所以逐轮 done/error 不需要任何新捕获；把这样的多轮折叠进一个分组 Block 是推迟的 session 级分组，不属于 1c。1c 还闭合 bash 的中止归因：前台 bash 中止在 head 上已经持久化 `ABORTED`，所以琥珀色在那里可用；持久 shell 和 PTY 的轮次中止在各自的 PR 之前保持红色。第一个真实工具——需要真实工具数据的 snapshot/e2e 覆盖落在这里。
+3. **bash** 迁移：单命令调用渲染为一个 Turn，并有一个新的 bash `presentationMeta` 承载结构化的单命令结果（command、cwd、output、exit/signal/timeout）。拼接的多命令调用的逐命令 Turn 是推迟的执行器变更（见 §状态灯、§表格）——不在 1c 构建；这里多命令调用保持一个 Turn。持久交互式 shell 本就每轮发出一次 `bash` tool call，但轮次的 exit code 只以模型文本 `[exit code: N]` 标记落盘、且仅非零退出才追加（[tool-bash-persistent/src/index.ts:174-177](../../../../packages/pty/tool-bash-persistent/src/index.ts#L174)），`tool-bash-persistent` 也没有 `presentationMeta`（只有 `render`，:386），所以纯 presenter 无法把成功的轮次读成 done。让持久轮次渲染出 done/error，需要把 1c 给单 shell bash 的同一套 `presentationMeta` 工作应用到 `tool-bash-persistent` 和 PTY 工具——这是推迟的；把这样的多轮折叠进一个分组 Block 是进一步的、同样推迟的 session 级分组。1c 还闭合 bash 的中止归因：前台 bash 中止在 head 上已经持久化 `ABORTED`，所以琥珀色在那里可用；持久 shell 和 PTY 的轮次中止在各自的 PR 之前保持红色。第一个真实工具——需要真实工具数据的 snapshot/e2e 覆盖落在这里。
 4. **再迁移一个工具**（read 或 search），在批量迁移前证明这个抽象确实是工具中立的，而不是围绕 bash 成形的；带它自己的 snapshot/e2e。
 
 snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 transcript 的 PR）；1a/1b 带它们能带的测试（类型、组件 unit），而不是在工具存在之前强行要求组装后 transcript 快照。
 
-**PR 2 — 迁移其余工具（优先级高于预览面板）。** 抽象验证过后，把其余所有工具——read/search 中 PR 1d 没选的那个，加上 write/edit、grep/glob、web_search/web_fetch（其来源列表随 `link` render kind 及其渲染器一起交付，遵循封闭联合纪律），以及代码变体 `run_code`/`cordis_mount`——迁进骨架（generic 兜底路径随 PR 1 的骨架一起交付——PR 2 下线 `ToolRow`/`DetailsPanel` 里旧的 `ioCard`/扁平文本兜底分支）；收敛 `ToolRow`/`DetailsPanel` 中的多分支 wire→props 分发；下线已不再使用的各 block `.block` 几何、五个 `*-card-model`、以及重复的截断/复制代码；统一 `CHAT_*` 常量；把 i18n 收进一个 labels 表层。这一步承载产品价值（所有卡片统一到一套骨架），所以排在预览面板增强之前。单个约 8–10k 行的 PR 无法 review 且风险集中，因此 PR 2 用仓库的官方 stacked-PR 机制交付为一叠更小的按工具组拆分的 PR（例如 write/edit；grep/glob；web），每个约 500–800 行。
+**PR 2 — 迁移其余工具（优先级高于预览面板）。** 抽象验证过后，把其余所有工具——read/search 中 PR 1d 没选的那个，加上 write/edit、grep/glob、web_search/web_fetch（其来源列表随 `link` render kind 及其渲染器一起交付，遵循封闭联合纪律）、代码变体 `run_code`/`cordis_mount`、以及终端卡工具 `tool-pwsh`（相同 exit 字段、相同卡片）——以及获得结构化轮次结果之后的持久 shell 和 PTY 工具——迁进骨架（generic 兜底路径随 PR 1 的骨架一起交付——PR 2 下线 `ToolRow`/`DetailsPanel` 里旧的 `ioCard`/扁平文本兜底分支）；收敛 `ToolRow`/`DetailsPanel` 中的多分支 wire→props 分发；下线已不再使用的各 block `.block` 几何、五个 `*-card-model`、以及重复的截断/复制代码；统一 `CHAT_*` 常量；把 i18n 收进一个 labels 表层。这一步承载产品价值（所有卡片统一到一套骨架），所以排在预览面板增强之前。单个约 8–10k 行的 PR 无法 review 且风险集中，因此 PR 2 用仓库的官方 stacked-PR 机制交付为一叠更小的按工具组拆分的 PR（例如 write/edit；grep/glob；web），每个约 500–800 行。
 
 **PR 3 — 侧边预览面板。** 可调宽的侧边预览面板*以及*打开它的 `⤢` 展开按钮，是一个独立的、优先级更低的增强，放在各自的 PR、依赖骨架 PR。它在一个右侧停靠、可拖拽调宽、单例（点击替换）的容器里复用骨架的 Segment 渲染，演进自今天的 `DetailsPanel` Output 面板；二级展开把面板带到真正的全屏（scroll-lock、主题化滚动条）。骨架 PR 既不渲染也不引用它；展开按钮只在这个 PR 里出现。
 
@@ -154,7 +154,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 - **扁平的 segment 流（没有 Turn 容器）。** `List = Segment[]`，IN/OUT 交错，状态灯挂在 IN segment 上。否决：这会把「哪些 segment 属于同一次执行」从数据里删掉，迫使渲染器从「下一个 IN 开启一个新单元」去推断分组。这样交互式会话（一个进程、多轮 stdin）就无法与彼此独立的命令区分开。
 
-- **整次调用只有一个状态灯（状态继续留在行 chrome 里）。** 否决：一批命令和一个交互式会话都需要逐轮的结果，而单个调用级状态灯无法表达。状态灯挂在 Turn 层。
+- **整次调用只有一个状态灯（状态继续留在行 chrome 里）。** 否决：状态灯应属于卡片内的 Turn 层，每个可观测执行都有它自己的结果（多命令调用今天是一个 Turn 带一个灯；交互式 shell 的每一轮是独立调用、各有自己的灯；逐命令 Turn 和轮次分组被推迟）。行 chrome 里的单个状态灯无法表达这些中的任何一项。
 
 - **保留 shell 词汇，其他工具走特例。** 否决：这个抽象存在的意义就是承载非 shell 的输入；shell 字段名会迫使其他每个工具都经过一层转换垫片。
 
@@ -170,7 +170,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 - `core/tools/src/presentation.ts` 的 presentation 契约中存在唯一一套 `Block`/`Turn`/`Segment` 类型（与 `ToolResultView` 并列，工具在这里类型化自己的 `presentationMeta` 投影——绝不放 `ui-primitives`，host 侧无法 import 它），`ui-primitives` 中存在骨架组件；bash 和另一个工具通过它渲染；对这两个工具，当前的四套状态推导被那一个状态灯函数取代。
 - bash 通过 `presentationMeta` 承载结构化的单命令结果；它的 `parseExitStatus` 文本往返被移除；面向模型的 bash 文本保持不变（快照）。
-- 单命令 bash 调用渲染为一个 Turn；一次拼接的多命令调用也是一个 Turn（逐命令 Turn 是推迟的执行器变更）；持久交互式 shell 的每一轮已经是独立的 `bash` 调用和 Block，把它们折叠进一个分组 Block 是推迟的会话级分组；单命令情形在视觉上与今天的 `TerminalBlock` 等价（快照）。
+- 单命令 bash 调用渲染为一个 Turn；一次拼接的多命令调用也是一个 Turn（逐命令 Turn 是推迟的执行器变更）；持久交互式 shell 的每一轮已经是独立的 `bash` 调用和 Block，但把一个成功轮次渲染成 done 需要 `tool-bash-persistent` 获得一个 `presentationMeta`（推迟，因为今天零退出的轮次留不下 marker），把若干轮折叠进一个分组 Block 是推迟的会话级分组；单命令情形在视觉上与今天的 `TerminalBlock` 等价（快照）。
 - 每个 Block 一个 gutter 宽度，能对齐每个 Turn 的 body 起始线；行号始终可见；空输出和无输入的 segment 按上述规则折叠。
 - 逐 segment 的 IN/OUT 复制可用（本 PR 控件组只带复制；展开按钮和侧边预览面板是独立 PR）；类型中不存在 `Turn`/`Block` 递归字段（与它的渲染器一同推迟）。
 - 完整的测试矩阵在 PR 1 整体交付（unit per-file 100%、real-API e2e、keyless 快照、适用的 web browser 快照、smoke、CI gates、sandbox），其中包含一条通过真实可运行示例、断言组装后 transcript 的 keyless 快照。覆盖集中在 1c/1d（首批有真实工具产出 transcript 的 PR）；1a/1b 按迁移节所述带它们能带的测试。

@@ -45,7 +45,7 @@ Block    — one tool call's whole card
 - **`isError === false` → 绿色（done）。** 操作无错误地完成——完成本身就是那个可观测信号。这是*每一个*工具的基础规则：一次读取、一次写入、一次单纯成功的搜索都是绿色。除了「它结束了且没有报错」之外，不制造额外的「成功」含义。
 - **error → 红色。** 工具报告了 `isError`。
 - **running → 蓝色**（`ongoing` 的 pixel-chase 点）。
-- **被取消 → 琥珀色（warn）。** 派发级中止会在*任何*工具的 result 上持久化 `error.info.code` = `ABORTED`（或 `ABORTED_BEFORE_DISPATCH`）（[tools/index.ts:1180/1588/1602](../../../../packages/core/tools/src/index.ts#L1180)），无论是否终端工具,所以被取消的 read、web 或 bash 都映射为琥珀色——不是红色（形态见 §状态灯；在各自持久化 code 前保持红色的 code-less 中止路径也在那节点名）。
+- **被取消 → 琥珀色（warn）。** 派发级中止会在*任何*工具的 result 上持久化 `error.info.code` = `ABORTED`（或 `ABORTED_BEFORE_DISPATCH`）（[tools/index.ts:1180/1588/1602](../../../../packages/core/tools/src/index.ts#L1180)），无论是否终端工具，所以被取消的 read、web 或 bash 都映射为琥珀色——不是红色（形态见 §状态灯；在各自持久化 code 前保持红色的 code-less 中止路径也在那节点名）。
 - **终端卡工具可以进一步细分**（bash，以及 Windows 上携带相同 exit/signal/timeout 字段、非零退出与 bash 一样以 `isError: false` 结算的 `tool-pwsh`），因为它们有其他工具没有的 exit code：`timedOut` → **琥珀色（warn）**（harness 因限额而终止了它）；不是来自我们的 timeout/abort 的终止 `signal` → **红色**（崩溃的 `SIGSEGV`，或外部的 `SIGTERM`；我们为超时发出的 `SIGTERM` 已经被琥珀色规则覆盖，所以能走到这里的 signal 都来自外部）；其余情况由 exit code 决定。
 - **灰色（neutral）** 只用在结果确实无法观测的场合——结果没有结构化通道的交互式 shell 轮次（持久 shell 的轮次 exit code 只以模型文本 marker 落盘——成功的轮次在持久工具获得结构化轮次结果之前是灰色；一旦获得，已结算轮次与其他执行一样取 done/error）。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。状态灯出现在 harness 能观测到该单元自身结果的场合——一整次 bash 调用（拼接的多命令调用今天算一个单元，所以整次调用一个灯），或一旦该轮携带结构化结果的交互式会话的一轮。把一次拼接的多命令调用拆成各带一个灯的逐命令 Turn，是推迟的执行器变更，而不是类型变更——类型本就持有 `Turn[]`、每个 Turn 各带一个灯，所以生产方只是多吐几个 Turn（会话级轮次分组和递归才是需要新字段、作为与消费方一同落地的编译破坏性扩展的那类）。
 
@@ -106,7 +106,7 @@ Block    — one tool call's whole card
 
 来源列表和抓取正文是一等的多 OUT segment 用例，取代今天「一张卡片外加一个兄弟 div」的做法。web 来源渲染为真正的仅 `http(s)` 链接（复用 `WebBlock` 的 `SafeLink` 安全处理）。
 
-运行中的调用渲染为一个带单个 Turn 的 Block：IN segment 从现有 `ToolCallView` 的结构化字段投影而来——`terminal` 的 command/cwd、`diff` 的 `FileDiff`、`read` 的 `kind`/`locations`——OUT 待定、状态灯为蓝色。当一个 call view 只带 `title`（某工具尚未丰富它的 `presentCall`）时,运行态 IN 就是那个 title——这是一个有界的降级情形,每个工具通过让自己的 `presentCall` 吐出结构化字段来消除它(read 已经这么做,其余随 1d/PR-2 迁移跟上),不是新视图。骨架同时渲染 call view（运行中）和 result view（已结算）；运行态形状留在 call-view 契约上，因此 PR 1a 只扩展 `ToolResultView`，不发明新的运行态视图。
+运行中的调用渲染为一个带单个 Turn 的 Block：IN segment 从现有 `ToolCallView` 的结构化字段投影而来——`terminal` 的 command/cwd、`diff` 的 `FileDiff`、`read` 的 `kind`/`locations`——OUT 待定、状态灯为蓝色。当一个 call view 只带 `title`（某工具尚未丰富它的 `presentCall`）时，运行态 IN 就是那个 title——这是一个有界的降级情形，每个工具通过让自己的 `presentCall` 吐出结构化字段来消除它（read 已经这么做，其余随 1d/PR-2 迁移跟上），不是新视图。骨架同时渲染 call view（运行中）和 result view（已结算）；运行态形状留在 call-view 契约上，因此 PR 1a 只扩展 `ToolResultView`，不发明新的运行态视图。
 
 两种展示形状明确地存活进骨架。write/edit 保留运行中的 call-time diff——调用进行中，预期变更作为 OUT segment 渲染，结算时由应用后的结果 diff 替换（今天的 `diffCardModel` 行为）——因此挂起中的 diff 不会因为结果导向的表格而丢失。代码变体的程序体（`run_code`、`cordis_mount`）今天走 `CodeBlock` + shiki，将作为 IN segment 以 `text` 形态渲染（等宽字体，`lang`——`lines` kind 今天携带的同一个 segment 载荷字段，在 PR 1a 类型中定义——驱动高亮；不带行号，遵循 IN segment 永不带行号的规则），代码展示在迁移中得以保留。
 

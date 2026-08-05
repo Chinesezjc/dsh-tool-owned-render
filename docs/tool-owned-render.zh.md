@@ -46,9 +46,9 @@ Block    — one tool call's whole card
 - **error → 红色。** 工具报告了 `isError`。
 - **running → 蓝色**（`ongoing` 的 pixel-chase 点）。
 - **bash 可以进一步细分**，因为它有其他工具没有的 exit code：`timedOut`/`aborted` → **琥珀色（warn）**（harness 因为限额或取消而终止了它——命令没有选择余地）；不是来自我们的 timeout/abort 的终止 `signal` → **红色**（崩溃的 `SIGSEGV`，或外部的 `SIGTERM`；我们为超时发出的 `SIGTERM` 已经被琥珀色规则覆盖，所以能走到这里的 signal 都来自外部）；其余情况由 exit code 决定。
-- **灰色（neutral）** 只用在结果确实无法观测的场合——shell 不报告逐轮 exit status 的 REPL 轮次（持久 shell 报告时，已结算轮次与其他执行一样取 done/error），以及一次多命令调用（`echo a; false; echo b`）里非末尾命令没有逐命令状态：harness 每次调用只观测到一个 exit code，而「一次调用跑多条命令且带逐命令状态」在任何地方都不是现有能力。两者都是灰色。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。状态灯出现在 harness 能观测到该单元自身结果的场合——一整次 bash 调用（拼接的多命令调用今天算一个单元，所以整次调用一个灯），或报告逐轮状态的交互式会话的一轮。把一次拼接的多命令调用拆成各带一个灯的逐命令 Turn，是推迟的、类型中不放任何字段的执行器变更——构建时作为与消费者一同落地的编译破坏性扩展，与 render kind 和递归同一纪律。
+- **灰色（neutral）** 只用在结果确实无法观测的场合——shell 不报告逐轮 exit status 的交互式 shell 轮次（持久 shell 报告时，已结算轮次与其他执行一样取 done/error）。骨架绝不去解析 Traceback，从而为一个它无法观测的结果编造出红灯。状态灯出现在 harness 能观测到该单元自身结果的场合——一整次 bash 调用（拼接的多命令调用今天算一个单元，所以整次调用一个灯），或报告逐轮状态的交互式会话的一轮。把一次拼接的多命令调用拆成各带一个灯的逐命令 Turn，是推迟的、类型中不放任何字段的执行器变更——构建时作为与消费者一同落地的编译破坏性扩展，与 render kind 和递归同一纪律。
 
-`warn`（琥珀色）和 `neutral`（灰色）是相对当前 `StateDot` 三状态用法（`done`/`error`/`ongoing`）新增的两个状态；琥珀色的 token 已经存在于 `StateDot.module.css`，但灰色今天既没有 `StateDotState` 成员也没有 CSS 规则，所以两者都要加——`StateDotState` 新增 `neutral` 并配一条匹配规则，作为 1b 骨架的一部分。信号归因只使用 harness 自己的信号，绝不猜测信号由谁发出，因为操作系统不报告发送方。琥珀色输入按通道分开。派发级中止会在 result node 上持久化 `error.info.code` = `ABORTED`（或 `ABORTED_BEFORE_DISPATCH`）（[tools/index.ts:1588/1602](../../../../packages/core/tools/src/index.ts#L1588)）；这个 code 在回放路径上留存（就是今天 `stopped` 行状态读取的同一来源），所以状态灯把它映射为琥珀色，无需新增管线。`timedOut` 住在成功路径的 bash result value 里，presenter 永远看不到它（`presentationMeta` 只在成功路径运行），所以它必须由新的 bash `presentationMeta` 承载。bash 命令中途被中止也得到同样的归因：工具抛出 `HarnessError('tool call aborted', TOOL_ABORTED)`（[tool-bash/src/index.ts:385](../../../../packages/bash/tool-bash/src/index.ts#L385)，`exec.signal.aborted` 的派发前分支在 :360），所以那里持久化的 code 也是 `ABORTED`，状态灯在回放时直接映射为琥珀色，无需推迟的变更。
+`warn`（琥珀色）和 `neutral`（灰色）是相对当前 `StateDot` 三状态用法（`done`/`error`/`ongoing`）新增的两个状态；琥珀色的 token 已经存在于 `StateDot.module.css`，但灰色今天既没有 `StateDotState` 成员也没有 CSS 规则，所以两者都要加——`StateDotState` 新增 `neutral` 并配一条匹配规则，作为 1b 骨架的一部分。信号归因只使用 harness 自己的信号，绝不猜测信号由谁发出，因为操作系统不报告发送方。琥珀色输入按通道分开。派发级中止会在 result node 上持久化 `error.info.code` = `ABORTED`（或 `ABORTED_BEFORE_DISPATCH`）（[tools/index.ts:1588/1602](../../../../packages/core/tools/src/index.ts#L1588)）；这个 code 持久化在已结算的 result node 上、在回放中留存，所以状态灯把它映射为琥珀色，无需新增管线（这个 `ABORTED` code 区别于 `stopped` 行状态所读的、客户端合成的 `interrupted` code——后者见 [tool-call-model.ts:215](../../../../packages/client/ui-conversation/src/client/contract/tool-call-model.ts#L215)，在一次 call 因 turn 中断而未结算时合成，见 [history-fold.ts:304](../../../../packages/client/runtime/src/client/session-history/history-fold.ts#L304)）。`timedOut` 住在成功路径的 bash result value 里，presenter 永远看不到它（`presentationMeta` 只在成功路径运行），所以它必须由新的 bash `presentationMeta` 承载。bash 命令中途被中止也得到同样的归因：工具抛出 `HarnessError('tool call aborted', TOOL_ABORTED)`（[tool-bash/src/index.ts:385](../../../../packages/bash/tool-bash/src/index.ts#L385)，`exec.signal.aborted` 的派发前分支在 :360），所以那里持久化的 code 也是 `ABORTED`，状态灯在回放时直接映射为琥珀色，无需推迟的变更。
 
 与今天的 `StateDot` 一样，状态灯只有颜色语义且 `aria-hidden`；每个灯都配一段可访问的状态文本（沿用行的 `stateStatus` 模式），使 done/error/running/warn/neutral 在无色觉或使用屏幕阅读器时依然可分辨。
 
@@ -73,7 +73,7 @@ Block    — one tool call's whole card
 
 超过高度上限的 Segment 会变成固定高度的内部滚动区。在其中，**行号随 body 一起滚动**（它们属于内容）；**状态灯不滚动**（它属于该 Turn 的状态）。短的 IN segment 只有一行、不会滚动，所以状态灯自然是静止的；但大的 IN（heredoc 脚本、大段 `write` content、大 args JSON）*确实*会滚动，那时状态灯必须**钉在该 segment 不滚动的外壳上**（锚定左上角，位于滚动区之外），从而在输入内容在下方滚动时保持可见。过长的单行以水平滚动区横向溢出；缩进属于内容，绝不折叠。
 
-滚动条复用仓库的主题化滚动条机制，而不是自绘 overlay。原生滚动条保留；它们通过 ui-theme 的 `--dsh-scrollbar-thumb`/`-hover` 间接层上皮（WebKit 伪元素与 Firefox `scrollbar-color` 两条路径），而一个 segment 只在滚动或被 hover 时显示它的滚动条——按 [pointer-revealed-scrollbars 笔记](../../implemented/feature/2026-08-04-pointer-revealed-sidebar-scrollbars.md) 给侧边栏所做的那样重绑那对 token（活跃时绑到 l2 对、静止时绑到 `transparent`），带一小段 linger 尾巴。预留 gutter（[2026-07-28-themed-scrollbars-and-reserved-gutter.md](../../implemented/bug-fix/2026-07-28-themed-scrollbars-and-reserved-gutter.md)）使滑块出现时 body 起始线不移动，因此不使用会让该预留塌陷的 `scrollbar-width: none`。这刻意**不是** pointer-revealed 笔记权衡后否决的自绘 overlay——那条路要付出命中测试、拖拽、滚轮、惯性、以及两套配色的 hover 状态的成本，只换来外观收益；复用 token 间接层让显示免费获得，并继承了升高表面的重绑契约。过长的单行以同样方式横向溢出，横向滚动条遵循同样的显示规则。
+滚动条复用仓库的主题化滚动条机制，而不是自绘 overlay。原生滚动条保留；它们通过 ui-theme 的 `--dsh-scrollbar-thumb`/`-hover` 间接层上皮（WebKit 伪元素与 Firefox `scrollbar-color` 两条路径）。显示遵循 [pointer-revealed-scrollbars 笔记](../../implemented/feature/2026-08-04-pointer-revealed-sidebar-scrollbars.md)：该笔记默认画出滚动条，在指针离开时把那对 token 重绑到 `transparent` 来隐藏它（带一小段 linger 尾巴），显示时升高的那对 token 保持生效。骨架在 segment 作用域施加同样的重绑——滑块静止时为 `transparent`，指针指向该 segment 时取用该表面的主题化 token 对，画在预留 gutter 上因此什么都不位移。预留 gutter（[2026-07-28-themed-scrollbars-and-reserved-gutter.md](../../implemented/bug-fix/2026-07-28-themed-scrollbars-and-reserved-gutter.md)）使滑块出现时 body 起始线不移动，因此不使用会让该预留塌陷的 `scrollbar-width: none`。这刻意**不是** pointer-revealed 笔记权衡后否决的自绘 overlay——那条路要付出命中测试、拖拽、滚轮、惯性、以及两套配色的 hover 状态的成本，只换来外观收益；复用 token 间接层让显示免费获得，并继承了升高表面的重绑契约。过长的单行以同样方式横向溢出。
 
 ### 逐 segment 控件：本期复制，展开后续
 
@@ -94,7 +94,7 @@ Block    — one tool call's whole card
 |---|---|---|---|
 | bash（1 条命令） | 提示符行：cwd + command | 输出文本（无行号） | exit/signal/timeout/abort |
 | bash（N 条命令） | 每条命令一条提示符行 | 调用合并后的输出 | 今天整次调用一个灯（harness 每次调用只观测到一个 exit）；逐命令 Turn 带逐命令灯需要推迟的执行器变更（见 §状态灯） |
-| bash（交互式） | 每轮一条提示符行，`>>>` 提示符 | 该轮的输出 | 持久 shell 报告逐轮状态处每轮一个灯（活动轮蓝色，已结算取 done/error）；不报告处为灰色——持久 shell 的逐轮 Turn 是推迟的执行器变更（见 §状态灯） |
+| bash（交互式） | 该轮的提示符行 | 该轮的输出 | 由该轮自己的 `[exit code: N]` 得 done/error（仅在 shell 不报告时为灰色）——每一轮本就是一次独立的 `bash` tool call、也是自己的一个 Block；把同一 shell 的多轮折叠进单个分组 Block 是推迟的 session 级轮次分组（见 §状态灯） |
 | read | 路径 + 行范围 | 带行号的文件行 | done/error |
 | write | `path` | 应用后的 diff，真实的新行号 | done/error |
 | edit | `path` | 应用后的 diff，真实的旧/新行号 | done/error |
@@ -135,7 +135,7 @@ Block    — one tool call's whole card
 
 1. **类型 + presentation 契约。** 共享的 `Block`/`Turn`/`Segment` 类型和扩展后的 `ToolResultView`，含一个只装已实现 kind（`prompt`/`text`/`lines`/`diff`）的封闭 render kind union，放在 `@deepseek-ai/dsh-tools`——即已经拥有 `ToolResultView` 和 `presentationMeta`、且被值的生产方（`bash`、`read` 等）依赖的中性工具契约层。React 叶子包 `ui-primitives` 只拥有渲染这些类型的组件，绝不拥有类型本身，因此没有生产方需要反向依赖客户端叶子包，也不存在「唯一一套类型」的第二份声明。纯类型；只有 unit 测试——此时还没有组装后 transcript 快照，因为在 1c 之前没有工具产出它。
 2. **骨架组件**（`ui-primitives` 中，即五张卡片一直预期存在的那个 `CardShell`）：统一的状态灯推导、自适应 gutter、逐 segment 滚动 + 主题化滚动条、逐 segment 复制（控件组**只带复制**）。组件 unit + 渲染快照。
-3. **bash** 迁移：单命令调用渲染为一个 Turn，并有一个新的 bash `presentationMeta` 承载结构化的单命令结果（command、cwd、output、exit/signal/timeout）。拼接的多命令调用的逐命令 Turn、以及持久交互式 shell 的逐轮 Turn，是推迟的执行器变更（见 §状态灯、§表格）——不在 1c 构建；这里多命令调用保持一个 Turn。第一个真实工具——需要真实工具数据的 snapshot/e2e 覆盖落在这里。
+3. **bash** 迁移：单命令调用渲染为一个 Turn，并有一个新的 bash `presentationMeta` 承载结构化的单命令结果（command、cwd、output、exit/signal/timeout）。拼接的多命令调用的逐命令 Turn 是推迟的执行器变更（见 §状态灯、§表格）——不在 1c 构建；这里多命令调用保持一个 Turn。持久交互式 shell 本就每轮发出一次带自己 `[exit code: N]` 的 `bash` tool call，所以逐轮 done/error 不需要任何新捕获；把这样的多轮折叠进一个分组 Block 是推迟的 session 级分组，不属于 1c。第一个真实工具——需要真实工具数据的 snapshot/e2e 覆盖落在这里。
 4. **再迁移一个工具**（read 或 search），在批量迁移前证明这个抽象确实是工具中立的，而不是围绕 bash 成形的；带它自己的 snapshot/e2e。
 
 snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 transcript 的 PR）；1a/1b 带它们能带的测试（类型、组件 unit），而不是在工具存在之前强行要求组装后 transcript 快照。
@@ -144,7 +144,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 **PR 3 — 侧边预览面板。** 可调宽的侧边预览面板*以及*打开它的 `⤢` 展开按钮，是一个独立的、优先级更低的增强，放在各自的 PR、依赖骨架 PR。它在一个右侧停靠、可拖拽调宽、单例（点击替换）的容器里复用骨架的 Segment 渲染，演进自今天的 `DetailsPanel` Output 面板；二级展开把面板带到真正的全屏（scroll-lock、主题化滚动条）。骨架 PR 既不渲染也不引用它；展开按钮只在这个 PR 里出现。
 
-**后续** — 推迟的扩展点（声明式 render kind 第 2 档、非文件 render kind `kv`/`link`/`json`/`table`/`image`/`notice`、第 3 档自定义渲染器、`Turn`/`Block` 递归、各行为对应的状态形态、两个推迟的 bash 执行器变更——把一次拼接的多命令调用采集为逐命令 Turn，以及持久交互式 shell 的逐轮状态）在其服务的行为被构建时，作为各自的 PR 落地。
+**后续** — 推迟的扩展点（声明式 render kind 第 2 档、非文件 render kind `kv`/`link`/`json`/`table`/`image`/`notice`、第 3 档自定义渲染器、`Turn`/`Block` 递归、各行为对应的状态形态、推迟的 bash 执行器变更——把一次拼接的多命令调用采集为逐命令 Turn——以及把持久 shell 的逐轮 `bash` 调用折叠进一个 Block 的 session 级分组）在其服务的行为被构建时，作为各自的 PR 落地。
 
 本文对应的工作是 PR 1，它本身是一个四层 PR 栈（1a–1d）；PR 2（全量迁移，一叠按工具组拆分的 PR）先于 PR 3（侧边预览面板）。
 
@@ -181,7 +181,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 - **wire 数据不可信。** `sessions.schema.ts` 只校验 `for` 和 `card: string`；现有的每个 card-model 都会再做一次防御性收窄。统一后的 wire→props 层**必须**保留逐工具的收窄，否则一个畸形载荷会让某一行或详情面板崩溃。
 - **回放纯度。** presenter 同时运行在实时路径和回放路径上，必须保持为 args（+ result meta）的纯函数，不做 I/O、不读时钟、不读会话状态（[adding-a-tool.md](../../../../docs/cookbook/adding-a-tool.md)）。状态灯推导和 segment 构造器必须遵守这一点。
 - **手写的 UI 机制。** 原型手绘了一个 overlay 滚动条、手写了高亮的 tokenizer；交付的组件改为复用 ui-theme 的主题化滚动条 token 间接层（而非手绘滑块）和仓库自己的 shiki 集成，从而不会重新引入本文所警告的边界情况负担（命中测试、拖拽、惯性、两套配色）。
-- **放弃了什么。** 状态统一意味着今天在卡片内*不*显示状态的那五张卡片会获得一个状态灯；对确实无法观测的结果，诚实的取值是灰色——抽象不得为它无法观测的东西制造出绿色的「成功」（这与状态灯和 gutter 共同遵循的「可观测才显示，否则省略」原则一致）。具体地说，在推迟的执行器变更落地之前放弃两项 bash 细化：把一次拼接的多命令调用采集为逐命令 Turn、持久交互式 shell 的逐轮状态；在此之前，一次多命令调用是一个带一个灯的 Turn（中途中止今天就是琥珀色，因为 bash 持久化 `ABORTED`）。
+- **放弃了什么。** 状态统一意味着今天在卡片内*不*显示状态的那五张卡片会获得一个状态灯；对确实无法观测的结果，诚实的取值是灰色——抽象不得为它无法观测的东西制造出绿色的「成功」（这与状态灯和 gutter 共同遵循的「可观测才显示，否则省略」原则一致）。具体地说，推迟两种形状：一次拼接的多命令调用的逐命令 Turn（一项执行器变更），以及把持久 shell 的逐轮 `bash` 调用折叠进一个分组 Block（session 级分组）；在它们落地之前，一次多命令调用是一个带一个灯的 Turn，每一个交互式轮次保持为自己的单轮 Block。逐轮 done/error *没有*被放弃——每一轮本就是一次带自己 `[exit code: N]` 的 `bash` 调用；中途中止也没有，它今天就是琥珀色，因为 bash 持久化 `ABORTED`。
 - **AGENTS.md 已经过时。** [AGENTS.md:116](../../../../AGENTS.md#L116) 仍然列着三种卡片类型；render-intent 联合类型已经有六种。这项工作应在同一个 PR 中更新那一行以及 render-intent 的设计说明。
 
 ## 取代

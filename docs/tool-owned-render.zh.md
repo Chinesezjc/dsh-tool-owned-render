@@ -170,7 +170,7 @@ snapshot 和 e2e 覆盖集中在 1c/1d（首批有真实工具产出组装后 tr
 
 - `core/tools/src/presentation.ts` 的 presentation 契约中存在唯一一套 `Block`/`Turn`/`Segment` 类型（与 `ToolResultView` 并列，工具在这里类型化自己的 `presentationMeta` 投影——绝不放 `ui-primitives`，host 侧无法 import 它），`ui-primitives` 中存在骨架组件；bash 和另一个工具通过它渲染；对这两个工具，当前的四套状态推导被那一个状态灯函数取代。
 - bash 通过 `presentationMeta` 承载该 call 的结构化结果（command、cwd、output、exit/signal/timeout/timedOut）；它的 `parseExitStatus` 文本往返被移除；面向模型的 bash 文本保持不变（快照）。
-- 单命令 bash 调用渲染为一个 Turn；一次拼接的多命令调用也是一个 Turn（逐命令 Turn 是推迟的执行器变更）；持久交互式 shell 的每一轮已经是独立的 `bash` 调用和 Block，但把一个成功轮次渲染成 done 需要 `tool-bash-persistent` 获得一个 `presentationMeta`（推迟，因为今天零退出的轮次留不下 marker），把若干轮折叠进一个分组 Block 是推迟的会话级分组；单命令情形在视觉上与今天的 `TerminalBlock` 等价（快照）。
+- 单命令 bash 调用渲染为一个 Turn；一次拼接的多命令调用也是一个 Turn（逐命令 Turn 是推迟的执行器变更）；持久交互式 shell 的每一轮已经是独立的 `bash` 调用和 Block，但把一个成功轮次渲染成 done 需要 `tool-bash-persistent` 获得一个 `presentationMeta` 来浮出它在进程内已捕获的 exit code（推迟，因为今天零退出的轮次留不下 marker；raw `terminal_send` 还需要先做逐轮 outcome 采集），把若干轮折叠进一个分组 Block 是推迟的会话级分组；单命令情形在视觉上与今天的 `TerminalBlock` 等价（快照）。
 - 每个 Block 一个 gutter 宽度，能对齐每个 Turn 的 body 起始线；行号始终可见；空输出和无输入的 segment 按上述规则折叠。
 - 逐 segment 的 IN/OUT 复制可用（本 PR 控件组只带复制；展开按钮和侧边预览面板是独立 PR）；类型中不存在 `Turn`/`Block` 递归字段（与它的渲染器一同推迟）。
 - 完整的测试矩阵在 PR 1 整体交付（unit per-file 100%、real-API e2e、keyless 快照、适用的 web browser 快照、smoke、CI gates、sandbox），其中包含一条通过真实可运行示例、断言组装后 transcript 的 keyless 快照。覆盖集中在 1c/1d（首批有真实工具产出 transcript 的 PR）；1a/1b 按迁移节所述带它们能带的测试。

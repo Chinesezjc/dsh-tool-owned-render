@@ -30,10 +30,12 @@ Web UI 里每一张工具结果卡片都是一个定制零件：自带数据形�
 所以渲染是**归工具所有，而非归骨架所有**。从 `ui-conversation` 里抽出一个 client 包——`@deepseek-ai/dsh-client-tool-render`——它只装三样东西，不含任何工具专属内容：
 
 - **layout 零件**，供工具组合：`ToolCard`、`Segment`、`Group`（见下），外加一个给「只想要标准排布」的工具用的默认组合 helper。
-- **注册接口**：keyed 的 `conversation.chat.toolview` slot 声明，以及一个已注册组件收到的 props（工具的 call view 和 result view）。
-- **内建 registrant**：每个内建工具（`bash`、`read`、`search`、`web`、`write`/`edit`……）一个自足模块，各自注册自己的 React 组件，组件组合这些零件、并做自己的 wire→props。`ui-conversation` 收缩为聊天 chrome（消息、compaction、队列、输入）并挂载 slot。
+- **注册接口**：per-view 的 keyed toolview slot 家族（今天是 `conversation.chat.toolview`；`…details.toolview` 和 PR 3 的 preview slot 随各自渲染点落地），全部共享同一套 `kind`/`scope`/`owner` 形状（[slots.ts:168-203](../../../../packages/client/ui-conversation/src/client/contract/slots.ts#L168)），外加一个 `registerToolView(ctx, key, component)` fan-out：一次把同一个组件注册进所有已声明的 toolview slot，以及一个已注册组件收到的 props（工具的 call view 和 result view）。
+- **内建 registrant**：每个内建工具（`bash`、`read`、`search`、`web`、`write`/`edit`……）一个自足模块，各自注册自己的 React 组件，组件组合这些零件、并做自己的 wire→props。`ui-conversation` 收缩为聊天 chrome（消息、compaction、队列、输入）并挂载这些 slot。
 
-**没有中央渲染分发，也没有中央 render-kind 联合。** keyed slot *就是*分发：每次工具调用通过以其工具名注册的组件渲染，没有注册时走通用兜底。改 `read` 的渲染就是改 `read` 这个 registrant 模块——它的组件和它的 wire→props——只依赖包里的零件；它不触及任何中央 switch、任何共享联合、任何其它工具。新增一个工具的渲染就是一个新 registrant，中央零改动。第三方工具作者只依赖这一个包、发布自己的 registrant。
+**没有中央渲染分发，也没有客户端 render-kind 联合。** 每个视图里，该视图的 keyed toolview slot *就是*分发：每次工具调用通过以其工具名注册的组件渲染，没有注册时走通用兜底。registrant 注册表经 `registerToolView` 在各 per-view slot 间共享，所以聊天流、详情面板、PR 3 的预览面板都通过同一个 registrant 渲染一个工具——不跨插件 import 组件、不跨 slot 边界传 `ReactNode`（这正是 slot 契约所禁止的）。改 `read` 的渲染就是改 `read` 这个 registrant 模块——它的组件和它的 wire→props——只依赖包里的零件；它不触及任何中央 switch、任何客户端 render-kind 联合、任何其它工具。新增一个工具的渲染就是一个新 registrant，中央零改动。第三方工具作者只依赖这一个包、发布自己的 registrant。
+
+这份隔离限定在**客户端渲染路径**——分发和组件。它**不**移除 host 侧的 view 词汇：`presentCall`/`presentResult` 仍返回 [presentation.ts](../../../../packages/core/tools/src/presentation.ts) 里闭合的 `ToolCallView`/`ToolResultView` 联合（见 §数据来源），那是唯一在回放中存活的通道。数据能装进某个已有 view 变体、或落到 `generic` 的工具无需中央改动；一个需要**全新结构化 payload** 跨 host→client 边界的工具要扩那个闭合联合——和今天一模一样。这条边界是刻意保留的（它正是让模型可见文本和 UI 的结构化 view 能由同一次执行重建的东西），且与「谁拥有渲染」正交。
 
 一个验证视觉形态的交互原型（所有工具形态、各种压力用例）放在孤立的 assets 分支上、不进代码树：[`unified-list-of-blocks-mock.html`](https://github.com/deepseek-harness/deepseek-harness/blob/list-of-blocks-assets/unified-list-of-blocks-mock.html)。它是一次性的设计产物——以本 note 文本、而非原型，作为最终交付内容的权威。
 
@@ -62,18 +64,17 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 
 ### 灯：一套观察式推导，作为 helper 提供
 
-包导出一个灯态函数，基于 harness 能观察到的东西；工具的 registrant 把结果喂给它、再把状态交给 `Segment` 或 `Group`。它替换今天四套独立的状态推导。工具可以传自己的状态，但共享 helper 才是让每个工具达成一致的东西：
+包导出一个灯态函数，基于 harness 能观察到的东西；工具的 registrant 把结果喂给它、再把状态交给 `Segment` 或 `Group`。它替换今天四套独立的状态推导。工具可以传自己的状态，但共享 helper 才是让每个工具达成一致的东西。helper 按顺序检查——具体信号*先于*通用 `isError` 规则，因为被取消的结果和失败的终端命令都带着一个通用规则会误读的 `isError` 值：
 
-- **`isError === false` → 绿（done）。** 完成本身就是可观察的信号。对*每个*工具的基线规则。
-- **取消 → 琥珀（warn）。** 一次 dispatch 级中止会在*任何*工具的结果上持久化 `error.info.code` = `ABORTED`（或 `ABORTED_BEFORE_DISPATCH`）（[tools/index.ts:1180/1588/1602](../../../../packages/core/tools/src/index.ts#L1180)），无论是否终端类，所以一次被取消的 read、web、bash 都映射到琥珀。helper 在通用 error 规则*之前*检查这个 code，因为被取消的结果会以 `isError: true` 落定*并且*带着这个 code——红优先会误映。
-- **error → 红。** 工具报了 `isError` 且没有 `ABORTED` code。
+- **取消或 interrupted → 琥珀（warn）。** 一次 dispatch 级中止会在*任何*工具的结果上持久化 `error.info.code` = `ABORTED`（或 `ABORTED_BEFORE_DISPATCH`）（[tools/index.ts:1180/1588/1602](../../../../packages/core/tools/src/index.ts#L1180)），无论是否终端类，所以一次被取消的 read、web、bash 都映射到琥珀；`stopped` 行态读取的、客户端合成的 `interrupted` code 也映射到琥珀。最先检查，因为被取消/中断的结果会以 `isError: true` 落定*并且*带着这个 code——下面的通用 error 规则会把它误映成红。
+- **终端类卡片工具按退出信号细分**（bash，以及 Windows 上的 `tool-pwsh`，它们带同样的退出/信号/超时字段、且以 `isError: false` 落定一个非零退出）：`timedOut` → 琥珀；一个非源于我们超时/中止的终止 `signal` → 红（一次崩溃的 `SIGSEGV`，或一个外部 `SIGTERM`；我们为超时发出的 `SIGTERM` 已被上面的琥珀规则拦下）；否则由退出码决定（`0` → 绿，非零 → 红）。在通用成功规则之前检查，因为一个非零退出以 `isError: false` 落定、否则会被读成绿。
 - **running → 蓝**（`ongoing` 那个像素追逐点）。
-- **终端类卡片工具进一步细分**（bash，以及 Windows 上的 `tool-pwsh`，它们带同样的退出/信号/超时字段、且以 `isError: false` 落定一个非零退出）：`timedOut` → 琥珀；一个非源于我们超时/中止的终止 `signal` → 红（一次崩溃的 `SIGSEGV`，或一个外部 `SIGTERM`；我们为超时发出的 `SIGTERM` 已被琥珀规则拦下）；否则由退出码决定。
+- **通用——其它每个工具：`isError === false` → 绿（done），否则 → 红。** 完成本身就是可观察的信号；这是基线规则，只在上面那些具体检查之后才到达。
 - **灰（neutral）** 只用在结果确实无法观察之处——一个交互 shell 回合、其结果尚无结构化通道（见下）。helper 绝不去解析一段 Traceback、为它观察不到的东西凭空造一个红灯。
 
 归因只用 harness 自己的信号，绝不猜是谁发了某个 OS 信号。`timedOut` 存在 bash 结果值里、位于呈现器看不到的成功路径上，所以它搭上新的 bash 结构化结果。一条单 shell 的 bash 命令在跑到一半被中止时也会持久化 `ABORTED`——工具抛出 `HarnessError('tool call aborted', TOOL_ABORTED)`（[tool-bash/src/index.ts:385](../../../../packages/bash/tool-bash/src/index.ts#L385)，dispatch 前的臂在 :360）——所以它在回放时是琥珀，无需延后改动。`stopped` 行态读取的、客户端合成的 `interrupted` code（[tool-call-model.ts:215](../../../../packages/client/ui-conversation/src/client/contract/tool-call-model.ts#L215)，铸于 [history-fold.ts:304](../../../../packages/client/runtime/src/client/session-history/history-fold.ts#L304)）也映射到琥珀。还有三种已落定的中止形状仍无 code、在各自的 PR 落地前渲染成红：一次持久 shell 回合的中止（[tool-bash-persistent/src/index.ts:322-324](../../../../packages/pty/tool-bash-persistent/src/index.ts#L322)）、它的调用方中止（:393）、以及一次原始 PTY send 的中止（[tool-pty/src/index.ts:279](../../../../packages/pty/tool-pty/src/index.ts#L279)）；要让它们变琥珀，需各自持久化一个可区分的 code。
 
-`warn`（琥珀）与 `neutral`（灰）是相对今天三态 `StateDot` 用法（`done`/`error`/`ongoing`）新增的两个态；琥珀的 token 已存在，灰今天既没有 `StateDotState` 成员也没有 CSS 规则，所以两者都要加。灯是纯颜色且 `aria-hidden`；每个都配一段对应的无障碍状态文本（沿用行的 `stateStatus` 模式），所以 done/error/running/warn/neutral 在无颜色时也能存活。
+`neutral`（灰）是相对今天 `StateDot` 成员新增的唯一一个态：`warning`（琥珀）今天已是 `StateDotState` 成员并有 CSS 规则（`stopped` 行在用），所以 helper 返回现有的 `warning`；只有灰需要新增成员和规则。灯是纯颜色且 `aria-hidden`；每个都配一段对应的无障碍状态文本（沿用行的 `stateStatus` 模式），所以 done/error/running/warn/neutral 在无颜色时也能存活。
 
 ### 一个 Segment 给工具什么
 
@@ -95,7 +96,7 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 | 工具 | IN | OUT | 灯 |
 |---|---|---|---|
 | bash（1 条命令） | prompt 行：cwd + command | 输出文本（无行号） | 退出/信号/超时/中止 |
-| bash（N 条命令） | 原始 `command` 作为一条 prompt 行（单个 `command`；逐命令拆分是延后的 executor 改动） | 合并输出 | 今天整次调用一个灯；逐命令 `Group` 需延后的 executor 改动 |
+| bash（N 条命令） | 原始 `command` 作为一条 prompt 行（单个 `command`；逐命令拆分是延后的 executor 改动） | 合并输出 | 今天不用 `Group`——一个可观察结果、一个灯、直接组合 Segment；逐命令 `Group` 需延后的 executor 改动 |
 | bash（交互式） | 该回合的 prompt 行 | 回合输出 | 每个回合是它自己的 `bash` 调用；逐回合 done/error 需持久 shell 工具的规范值先保留回合退出码（今天它只作为非零 `[exit code: N]` 记号进入持久化数据，而 `tool-bash-persistent` 没有结构化结果）——延后；在此之前灰 |
 | read | 路径 + 行范围 | 带号文件行 | done/error |
 | write / edit | `path` | 应用后的 diff，真实的（旧/）新行号 | done/error |
@@ -129,12 +130,12 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 
 1. **抽出 `@deepseek-ai/dsh-client-tool-render`。** 把 `conversation.chat.toolview` slot 声明和 registrant props 契约从 `ui-conversation/contract/slots.ts` 移进新包；`ui-conversation` 依赖它、仍挂载 slot。机械改动；无行为变化、无视觉变化。既有的逐工具 registrant 原样继续工作。
 2. **零件**（`ToolCard`/`Segment`/`Group` + 默认 helper + 灯 helper）落在新包、构建于 `ui-primitives` 之上：一套灯推导、自适应 gutter、逐 segment 滚动 + 主题化滚动条、逐 segment 复制。组件单测 + 渲染快照，含一张多 `Group` 卡片以演练可选分组。
-3. **bash** 转成一个组合零件的 registrant，配一个新的 bash `presentationMeta` 承载结构化结果（command、cwd、输出、退出/信号/超时/timedOut）。第一个真实工具——需要真实工具数据的快照/e2e 覆盖在这里落地。一次多命令调用今天是一个 `Group`（逐命令 `Group` 是延后的 executor 改动）。
+3. **bash** 转成一个组合零件的 registrant，配一个新的 bash `presentationMeta` 承载结构化结果（command、cwd、输出、退出/信号/超时/timedOut）。第一个真实工具——需要真实工具数据的快照/e2e 覆盖在这里落地。一次多命令调用今天直接在一个灯下组合 Segment、不用 `Group`（逐命令 `Group` 是延后的 executor 改动）。
 4. **再一个工具**（read 或 search）转换，证明零件确实对工具中立、不是 bash 形状；配它自己的快照/e2e。
 
-**PR 2 —— 转换其余工具并删除中央分发。** 零件验证过后，把其余每个工具转成自组合的 registrant——read/search 的剩余部分、write/edit、grep/glob、web_search/web_fetch、代码变体 `run_code`/`cordis_mount`、以及 `tool-pwsh`（同一终端形状）；持久 shell 和 PTY 工具在它们拿到结构化的逐回合结果后跟上。然后**删除中央链**：`ToolRow` 的三元、`DetailsPanel` 的 if/return 孪生、以及五个 `*-card-model` 全部消失——keyed slot 现在是唯一的分发。退掉逐 block 的 `.block` 几何和重复的 cap/copy 代码；统一 `CHAT_*` 常量；把 i18n 收进一个 labels 面。以逐工具组的 stack（write/edit；grep/glob；web）交付，因为单个约 8–10k 行的 PR 无法评审。
+**PR 2 —— 转换其余工具并删除中央分发。** 零件验证过后，把其余每个工具转成自组合的 registrant——read/search 的剩余部分、write/edit、grep/glob、web_search/web_fetch、代码变体 `run_code`/`cordis_mount`、以及 `tool-pwsh`（同一终端形状）；持久 shell 和 PTY 工具在它们拿到结构化的逐回合结果后跟上。然后**删除中央链**：`ToolRow` 的三元、五个 `*-card-model` 消失，`DetailsPanel` 的 if/return 孪生也删掉——但详情面板**不孤儿**：它声明自己的 per-view `…details.toolview` slot（与 chat 同形状）、通过它渲染共享的 registrant，于是**每个视图内**它自己的 toolview slot 是唯一分发。退掉逐 block 的 `.block` 几何和重复的 cap/copy 代码；统一 `CHAT_*` 常量；把 i18n 收进一个 labels 面。以逐工具组的 stack（write/edit；grep/glob；web）交付，因为单个约 8–10k 行的 PR 无法评审。
 
-**PR 3 —— 侧边预览面板。** 一个可调宽、右侧停靠、单例的预览容器（点击替换，带二级展开到真正全屏），由今天的 `DetailsPanel` Output 面演化而来，由逐 segment 的 `⤢` 按钮打开。它渲染工具自己的 registrant 组件（不是另一套分发），因而免费继承每个工具的呈现。独立、优先级更低；前面的 PR 既不渲染也不引用它。
+**PR 3 —— 侧边预览面板。** 一个可调宽、右侧停靠、单例的预览容器（点击替换，带二级展开到真正全屏），由今天的 `DetailsPanel` Output 面演化而来，由逐 segment 的 `⤢` 按钮打开。它声明自己的 per-view toolview slot、通过它渲染工具自己的 registrant（不是另一套分发），因而免费继承每个工具的呈现。独立、优先级更低；前面的 PR 既不渲染也不引用它。
 
 **以后** —— 一次联合多命令调用的逐命令 `Group` 捕获、持久/PTY 工具的结构化逐回合结果（两者都是 executor/backend 改动、零件已经容纳——一个生产方多发几个 `Group` / 一个值保留退出码）、嵌套 `Group` 递归、以及逐行为的状态形状（流式、后台任务、需审批、沙箱拒绝——新字段，各自作为一次会打断编译的扩展、连同其消费方一起）、以及能让持久/PTY 中止变琥珀的无 code 中止 code。每一项都随它服务的行为一起落地。
 
@@ -152,6 +153,8 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 
 - **逐工具的姊妹包（每个工具发布自己的渲染包）。** 因太重否决：后端工具包不能 import React，所以每个都要一个姊妹 client 包。一个抽出的渲染包、内含逐工具的 registrant 模块，以包数量的零头给到同样的隔离（改一个模块）。
 
+- **一个面板直接查询的全局 registrant 注册表（旁路查找）。** 否决：那会让详情/预览面板绕开 slot 系统、按工具名解析组件——绕过注册即 effect、disposal、session scope，还招来 slot 契约禁止的跨插件 import 组件 / 传 `ReactNode`。per-view toolview slot 家族加 `registerToolView` 让每个面板拿到同一批 registrant 而仍待在契约内；注册表*就是* slot，经每个视图自己的渲染点查询。
+
 - **展开为一个居中模态 / 全屏接管。** 否决，改用可调宽、右侧停靠的侧边预览面板（单例、点击替换、可选二级全屏）加逐 segment 滚动；该面板保持会话可见、并复用每个工具的 registrant。
 
 - **自绘覆盖层滚动条。** 否决——与[指针显隐滚动条那篇 note](../../implemented/feature/2026-08-04-pointer-revealed-sidebar-scrollbars.md) 同样的判断：它为一点装饰性收益，付出命中测试、拖拽、滚轮、惯性、以及两套调色板的 hover 态。零件改为复用 ui-theme 的 token 间接层。
@@ -160,7 +163,7 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 
 - `@deepseek-ai/dsh-client-tool-render` 存在，装着 `conversation.chat.toolview` slot 声明 + registrant props、`ToolCard`/`Segment`/`Group` 零件 + 默认 helper、以及灯 helper；`ui-conversation` 依赖它并挂载 slot。slot 抽取（PR 1a）不改行为、不改像素（快照不变）。
 - bash 和另一个工具渲染为组合零件的 registrant；对这两个工具，四套当前状态推导被替换为一套灯 helper。
-- bash 经 `presentationMeta` 承载它的结构化结果（command、cwd、输出、退出/信号/超时/timedOut）；它的 `parseExitStatus` 文本往返消失；模型可见的 bash 文本不变（快照）。一次单命令调用渲染为一个灯；一次联合多命令调用是一个 `Group`（逐命令 `Group` 是延后的 executor 改动）；单命令情形与今天的 `TerminalBlock` 视觉等价（快照）。
+- bash 经 `presentationMeta` 承载它的结构化结果（command、cwd、输出、退出/信号/超时/timedOut）；它的 `parseExitStatus` 文本往返消失；模型可见的 bash 文本不变（快照）。一次单命令调用渲染为一个灯；一次联合多命令调用直接在一个灯下组合 Segment、不用 `Group`（逐命令 `Group` 是延后的 executor 改动）；单命令情形与今天的 `TerminalBlock` 视觉等价（快照）。
 - 每个 `ToolCard` 一个 gutter 宽对齐每个 Segment 的 body；行号始终可见；空的和无输入的 segment 按规则折叠；逐 segment 的 IN/OUT 复制可用。
 - 改一个已转换工具的渲染只触及那个工具的 registrant 模块（由 1d 不触及任何 bash 文件来演示）；PR 2 后不存在中央渲染分发、也不存在 render-kind 联合。
 - 交付完整测试矩阵（unit per-file 100%、real-API e2e、keyless 快照、适用面上的 web 浏览器快照、smoke、CI gates、sandbox），含一个经真实可运行示例、断言组装后 transcript 的 keyless 快照。覆盖集中在含真实工具、能产出 transcript 的 PR 里。
@@ -171,7 +174,7 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 - **wire 不可信。** `sessions.schema.ts` 只校验 `for` + `card: string`；每个 registrant 都必须防御性地重新收窄自己的 view，否则一个畸形 payload 会让它那一行崩——这正是 card-model 今天保持的纪律，现在住进每个 registrant 里。
 - **回放纯度。** registrant 和灯 helper 跑在实时和回放两条路上，必须保持是 view 的纯函数（args + result meta），无 I/O、时钟、会话状态（[adding-a-tool.md](../../../../docs/cookbook/adding-a-tool.md)）。
 - **一致性靠约定。** 因为一个工具可以重构整行（原则 2），行到行的视觉一致性依赖内建们遵循默认 helper、而非一个中央锁；快照套件是抓住漂移行的东西。
-- **放弃了什么。** 统一状态意味着今天*不*显示卡内状态的四张卡（只有 `TerminalBlock` 带一个）会拿到一个灯；对确实无法观察的结果，诚实的值是灰、绝不是伪造的绿。三样东西延后：一次联合多命令调用的逐命令 `Group`；一个结构化的逐回合结果、好让一次*成功*的持久/PTY 回合能读作 done（今天一次零退出的回合不留记号、且这些工具不带结构化结果，所以一个纯呈现器只能重建一次失败的持久 shell 回合、原始 PTY 回合一个都重建不了）；以及嵌套 `Group` 递归。在它们落地前，一次多命令调用是一个带一个灯的 `Group`，每个交互回合是它自己的卡片、非零退出显红、成功显灰。
+- **放弃了什么。** 统一状态意味着今天*不*显示卡内状态的四张卡（只有 `TerminalBlock` 带一个）会拿到一个灯；对确实无法观察的结果，诚实的值是灰、绝不是伪造的绿。三样东西延后：一次联合多命令调用的逐命令 `Group`；一个结构化的逐回合结果、好让一次*成功*的持久/PTY 回合能读作 done（今天一次零退出的回合不留记号、且这些工具不带结构化结果，所以一个纯呈现器只能重建一次失败的持久 shell 回合、原始 PTY 回合一个都重建不了）；以及嵌套 `Group` 递归。在它们落地前，一次多命令调用直接在一个灯下组合 Segment（不用 `Group`），每个交互回合是它自己的卡片、非零退出显红、成功显灰。
 - **AGENTS.md 漂移。** [AGENTS.md:116](../../../../AGENTS.md#L116) 仍列三种卡片 kind；render-intent 联合已经更多。本工作应在同一个 PR 里更新那一行和 render-intent 设计 note。
 
 ## 取代

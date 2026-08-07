@@ -82,7 +82,7 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 
 一个 `Segment` 是一个 `[gutter][body]` 网格；工具提供 body，零件提供共享机制，让任何工具都不必重实现它们：
 
-- **gutter，按 role 互斥。** 一个 IN segment 的 gutter 承载**灯**（最左、仅第一行）；一个 IN segment **永不承载行号**，即便有很多行（一段 heredoc 脚本、一个 `run_code` 程序体、一大坨 args JSON）——那些行是输入，不是文件内容。一个 OUT segment 的 gutter 只为展示*文件内容*的 OUT（read、grep、diff）承载**行号**（右对齐）；一个 diff 的 gutter 展示真实的旧/新行号，**不是** `+`/`-` 记号（红删/绿增给号和 body 上色；一行被删除和它的替换行可能显示同一个号）。非文件 OUT（bash 输出、web body、args JSON）让 gutter 留空。
+- **gutter，按 role 互斥。** 一个 IN segment 的 gutter 承载**灯**（最左、仅第一行）；一个 IN segment **永不承载行号**，即便有很多行（一段 heredoc 脚本、一个 `run_code` 程序体、一大坨 args JSON）——那些行是输入，不是文件内容。一个 OUT segment 的 gutter 只为展示*文件内容*的 OUT（read、grep、diff）承载**行号**（右对齐）；一个 diff 的 gutter 展示真实的旧/新行号，**不是** `+`/`-` 记号（红删/绿增给号和 body 上色；一行被删除和它的替换行可能显示同一个号）。diff 的真实旧/新行号要求 `FileDiff` 载荷携带它们——今天它只有 `path`/`oldText`/`newText`，hunk 计算丢弃 `oldStart`/`newStart`——这是一项随 PR 2 write/edit 迁移一起暂存的 presentation 契约扩展。非文件 OUT（bash 输出、web body、args JSON）让 gutter 留空。
 - **每个 `ToolCard` 一个 gutter 宽**，`max(灯最小宽, 最宽行号)`，让每个 Segment 的 body 从同一列起始；对一个 6 位数自适应。行号始终可见，绝不 hover 才显。
 - **逐 segment 滚动**：一个超过高度上限的 Segment 变成定高滚动区；行号随 body 滚动，灯钉在不滚动的外壳上。长行水平溢出；缩进绝不折叠。滚动条复用 ui-theme 的主题化滚动条 token 对（`--dsh-scrollbar-thumb`/`-hover`），而非自绘覆盖层，遵循[指针显隐滚动条那篇 note](../../implemented/feature/2026-08-04-pointer-revealed-sidebar-scrollbars.md)：静止时 `transparent`，被指向时用该表面的 l2 对，画在预留的 gutter 上（[预留 gutter 那篇 note](../../implemented/bug-fix/2026-07-28-themed-scrollbars-and-reserved-gutter.md)）所以什么都不位移。一个画在抬升表面上的 thumb 用 l2 对；一个静止的 `transparent` thumb 什么都不画、因而不欠 l2——即*隐藏不再算作抬升*那一条。
 - **逐 segment 复制**（IN 和 OUT 各一个——复制命令和复制输出是分开的；没有整卡复制）。控件锚定在 segment 不滚动的右上角，hover / `:focus-within` / 触摸时显现。

@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-08-03-unified-list-of-blocks-tool-render.md
 2026-08-03-unified-list-of-blocks-tool-render.md: 15d3806858713ad1711f5328ee372cd60374c79c
-2026-08-03-unified-list-of-blocks-tool-render.zh.md: 9a6623d02a3919f07c391371d8d15510fda0a389
+2026-08-03-unified-list-of-blocks-tool-render.zh.md: d08cd98a233c26447e783667abfb0a07c15a9294

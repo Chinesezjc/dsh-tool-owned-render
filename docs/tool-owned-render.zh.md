@@ -1,4 +1,4 @@
-# Agent Note：渲染归工具所有——一个供工具组合的 layout 包
+# Agent Note: 渲染归工具所有——一个供工具组合的 layout 包
 
 Status: proposed
 
@@ -8,11 +8,11 @@ Status: proposed
 
 Web UI 里每一张工具结果卡片都是一个定制零件：自带数据形状、自带 CSS 几何、在一条手工维护的分发链里各占一格。当前有五张工具结果卡片——`TerminalBlock`、`ReadBlock`、`DiffBlock`、`SearchBlock`、`WebBlock`——外加通用兜底行和共享代码面 `CodeBlock`，它们在结构上没有任何共识：
 
-- **状态在四个地方各自推导。** 只有 `TerminalBlock` 在卡片*内部*带一个运行态指示（整次调用一个 `StateDot`，只画在第一条 prompt 行，位于 [TerminalBlock.tsx:240](../../../../packages/client/ui-primitives/src/TerminalBlock.tsx#L240)，外加一个退出码/信号 `Pill`）。另外四张卡片都不带；它们的成功、失败、停止态由外围的行 chrome 涂色。这些推导不共享来源：`ToolRowState`（[tool-call-model.ts:23](../../../../packages/client/ui-conversation/src/client/contract/tool-call-model.ts#L23)）、`terminalFailed`（[terminal-card-model.ts:71](../../../../packages/client/ui-conversation/src/client/contract/terminal-card-model.ts#L71)，之所以需要是因为一条失败的 bash 命令会以 `isError: false` 落定）、`StateDotState` 的四个取值、以及 `TerminalBlock` 自己内部的 运行/退出/信号 映射，是同一个概念的四套独立编码。
+- **状态在五个地方各自推导。** 只有 `TerminalBlock` 在卡片*内部*带一个运行态指示（整次调用一个 `StateDot`，只画在第一条 prompt 行，位于 [TerminalBlock.tsx:240](../../../../packages/client/ui-primitives/src/TerminalBlock.tsx#L240)，外加一个退出码/信号 `Pill`）。另外四张卡片都不带；它们的成功、失败、停止态由外围的行 chrome 涂色。这些推导不共享来源：`ToolRowState`（[tool-call-model.ts:23](../../../../packages/client/ui-conversation/src/client/contract/tool-call-model.ts#L23)）、`terminalFailed`（[terminal-card-model.ts:71](../../../../packages/client/ui-conversation/src/client/contract/terminal-card-model.ts#L71)，之所以需要是因为一条失败的 bash 命令会以 `isError: false` 落定）、`StateDotState` 的四个取值、以及 `TerminalBlock` 自己内部的 运行/退出/信号 映射，是同一个概念的五套独立编码（#1754 合并带来了 ui-skill 的 `SkillRow`，它自己推导 `SkillRowState`——running/ok/error/stopped——见 [SkillRow.tsx:14](../../../../packages/client/ui-skill/src/client/SkillRow.tsx#L14)）。
 
-- **「输入」没有共享表示。** 只有 `terminal`（command/cwd/description）和 `diff`（`FileDiff[]`）声明了结构化的 call view。`read`、`grep`、`glob`、`web_search`、`web_fetch` 都落到 `card: 'generic'` 的 call view——一个 `title` 字符串（read 另加 `kind` 和 `locations`），行的摘要和正文则从原始 `argsRaw` JSON 现推（[tool-call-model.ts](../../../../packages/client/ui-conversation/src/client/contract/tool-call-model.ts)）；grep 的 `path`/`include` 只作为 `"Grep X in Y (Z)"` 的子串留存。今天唯一真正渲染一对 IN/OUT segment 的地方是通用兜底的 `div.ioCard`（[ToolRow.tsx:294](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L294)），它硬编码在 `ToolRow` 内部、恰好只支持两个 segment、既不能嵌套也不能复用。
+- **「输入」没有共享表示。** 只有 `terminal`（command/cwd/description）和 `diff`（`FileDiff[]`）声明了结构化的 call view。`read`、`grep`、`glob`、`web_search`、`web_fetch` 都落到 `card: 'generic'` 的 call view——一个 `title` 字符串（read 另加 `kind` 和 `locations`），行的摘要和正文则从原始 `argsRaw` JSON 现推（[tool-call-model.ts](../../../../packages/client/ui-conversation/src/client/contract/tool-call-model.ts)）；grep 的 `path`/`include` 只作为 `"Grep X in Y (Z)"` 的子串留存。今天唯一真正渲染一对 IN/OUT segment 的地方是通用兜底的 `div.ioCard`（[ToolRow.tsx:298](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L298)），它硬编码在 `ToolRow` 内部、恰好只支持两个 segment、既不能嵌套也不能复用。
 
-- **分发是一条中央链，还写了两遍。** 选一个工具渲染成哪张卡片，是一条多臂链——[ToolRow.tsx:258](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L258) 的嵌套三元表达式，以及在 [DetailsPanel.tsx:151](../../../../packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx#L151) 又以不同顺序写了一遍的 if/return 链。新增或改动一个工具的渲染，就得动这条共享中央链（和它的孪生），外加那个工具的 `*-card-model`——所以没有任何一个工具的呈现能被孤立地改动。
+- **分发是一条中央链，还写了两遍。** 选一个工具渲染成哪张卡片，是一条多臂链——[ToolRow.tsx:262](../../../../packages/client/ui-conversation/src/client/chat/ToolRow.tsx#L262) 的嵌套三元表达式，以及在 [DetailsPanel.tsx:151](../../../../packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx#L151) 又以不同顺序写了一遍的 if/return 链。新增或改动一个工具的渲染，就得动这条共享中央链（和它的孪生），外加那个工具的 `*-card-model`——所以没有任何一个工具的呈现能被孤立地改动。
 
 - **结构靠约定重复，而非靠代码共享。** 没有共享的卡片外壳（`grep -rn CardShell` = 0）。五个 CSS 模块各自声明一个 `.block` 根、重复同样四个属性，各自定义自己的 `--dsl-<name>-radius: 12px` 和 `--dsl-<name>-line-height: 22px`（`WebBlock` 只声明了 radius）。`headTailCap` 和 `useCopyFeedback` 各自恰好只有两个调用方；`ReadBlock` 和 `DiffBlock` 把同一套 head/tail 算术和 1000ms 复制超时连同硬编码的中文字面量各自内联一遍。三个 `CHAT_*_MAX_LINES = 8` 常量重复同一条注释。
 
@@ -120,7 +120,7 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 
 ### 数据来源：可由文本重建的边界被保留
 
-一个工具是否需要模型可见结果文本以外的结构化数据，本项工作不改变。bash 能从 args 和输出重建 `command`/`cwd`/退出，这正是为什么它是今天唯一*不*用 `presentationMeta` 的卡片（这里它会拿到一个，替换它 `parseExitStatus` 的文本往返）。read 的行号、search 的分组、web 的来源在文本里是有损的，所以它们搭 `presentationMeta`——那是唯一在回放中存活的结构化通道，因为 `ToolEventView` 从不持久化（[api/events.ts](../../../../packages/host/apiproxy/src/api/events.ts)）。一个 registrant 读工具的 call/result view（客户端从不直接看到 `presentationMeta`；它是宿主侧投影的输入）。不变式 **模型可见 ⟺ 已记录**（[AGENTS.md:100](../../../../AGENTS.md#L100)）成立：模型看到拍平的文本，UI 看到结构化 view，两者出自同一次执行。
+一个工具是否需要模型可见结果文本以外的结构化数据，本项工作不改变。bash 能从 args 和输出重建 `command`/`cwd`/退出，这正是为什么它是今天唯一*不*用 `presentationMeta` 的卡片（这里它会拿到一个，替换它 `parseExitStatus` 的文本往返）。read 的行号、search 的分组、web 的来源在文本里是有损的，所以它们搭 `presentationMeta`——那是唯一在回放中存活的结构化通道，因为 `ToolEventView` 从不持久化（[api/events.ts](../../../../packages/host/apiproxy/src/api/events.ts)）。一个 registrant 读工具的 call/result view（客户端从不直接看到 `presentationMeta`；它是宿主侧投影的输入）。不变式 **模型可见 ⟺ 已记录**（[AGENTS.md:100](../../../../AGENTS.md#L100)）成立：模型看到拍平的文本，UI 看到结构化 view，两者出自同一次执行。 `run_code` 子调用是这个通道之外的一个形状：它的 `presentationMeta` 被跳过，`tool/code-dispatch` 只记录 arguments/isError/content（[code-mode.ts:541](../../../../packages/core/tools/src/code-mode.ts#L541)），所以客户端的 call/result view 都是 null，子调用行渲染为 generic——一项推迟的扩展，PR 1 不承诺。
 
 ### 递归整体延后
 
@@ -176,7 +176,7 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 - **wire 不可信。** `sessions.schema.ts` 只校验 `for` + `card: string`；每个 registrant 都必须防御性地重新收窄自己的 view，否则一个畸形 payload 会让它那一行崩——这正是 card-model 今天保持的纪律，现在住进每个 registrant 里。
 - **一个 key、两个生产方。** `bash` key 由 `tool-bash` 与 `tool-bash-persistent` 共享（部署挂哪个是哪个），所以 `bash` registrant 从 PR 1c 起就同时渲染两者——它没法等持久工具那份延后的结构化结果。它的无 meta 文本可重建路径不是可选的润色，而是持久生产方所依赖的兼容形态；PR 1c 负责测它。（`tool-pwsh` 注册自己的 `pwsh` key、到自己的 PR 2 迁移前用自己的 presenter，所以 `bash` registrant 绝不渲染它——它消费的共享 `parseExitStatus` seam 是代码、不是渲染路径。）
 - **回放窗口里 call 落在窗外。** 一个分页回放窗口可能从一个 `tool/result` 开始、而它的 `tool/call` 落在窗外；Host 跳过 `presentResult`、客户端节点 `call: null`，所以通用 fallback 没有 args JSON、bash 的 no-meta 路径也没有 `command` 可重建。两者对该节点降级为只渲染结果文本（无 IN 段），直到向上翻页把 call 带进来——一个有界、自愈的降级，不是错误渲染。
-- **回放纯度。** registrant 和灯 helper 跑在实时和回放两条路上，必须保持是 view 的纯函数（args + result meta），无 I/O、时钟、会话状态（[adding-a-tool.md](../../../../docs/cookbook/adding-a-tool.md)）。
+- **回放纯度。** presentation 方法和灯 helper 跑在实时和回放两条路上，必须保持是 view 的纯函数（args + result meta），无 I/O、时钟、会话状态——纯度契约覆盖 presentation 方法（[AGENTS.md:116](../../../../AGENTS.md#L116)，[adding-a-tool.md](../../../../docs/cookbook/adding-a-tool.md)）；registrant 是消费显式传入快照的 UI adapter。
 - **一致性靠约定。** 因为一个工具可以重构整行（原则 2），行到行的视觉一致性依赖内建们遵循默认 helper、而非一个中央锁；快照套件是抓住漂移行的东西。
 - **放弃了什么。** 统一状态意味着今天*不*显示卡内状态的四张卡（只有 `TerminalBlock` 带一个）会拿到一个灯；对确实无法观察的结果，诚实的值是灰、绝不是伪造的绿。三样东西延后：一次联合多命令调用的逐命令 `Group`；一个结构化的逐回合结果、好让一次*成功*的持久/PTY 回合能读作 done（今天一次零退出的回合不留记号、且这些工具不带结构化结果，所以一个纯呈现器只能重建一次失败的持久 shell 回合、原始 PTY 回合一个都重建不了）；以及嵌套 `Group` 递归。在它们落地前，一次多命令调用直接在一个灯下组合 Segment（不用 `Group`），每个交互回合是它自己的卡片、非零退出显红、成功显灰。
 - **AGENTS.md 漂移。** [AGENTS.md:116](../../../../AGENTS.md#L116) 仍列三种卡片 kind；render-intent 联合已经更多。本工作应在同一个 PR 里更新那一行和 render-intent 设计 note。

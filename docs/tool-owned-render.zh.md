@@ -33,7 +33,7 @@ Status: proposed
 
 host 侧的视图词汇不动。`presentCall`/`presentResult` 仍返回 [presentation.ts](../../../../packages/core/tools/src/presentation.ts) 里闭合的 `ToolCallView`/`ToolResultView` 联合——那是实时和回放两条路上都在的、唯一的 host→client 投影。数据能装进某个已有 view 变体的工具无需中央改动；一个需要真正全新结构化载荷的工具扩那个闭合联合、和今天一模一样。`presentationMeta` 通道同样不动；增量 4 只是让 bash *用*它，不扩它。
 
-一个验证视觉形态的交互原型（所有工具形态、各种压力用例）放在孤立的 assets 分支上、不进代码树：[`unified-list-of-blocks-mock.html`](https://github.com/deepseek-harness/deepseek-harness/blob/list-of-blocks-assets/unified-list-of-blocks-mock.html)。它是一次性的设计产物——以本 note 文本、而非原型，作为最终交付内容的权威。
+一个验证视觉形态的交互原型（所有工具形态、各种压力用例）放在孤立的 assets 分支 `list-of-blocks-assets` 上、不进代码树，即 `unified-list-of-blocks-mock.html`。它是一次性的设计产物——以本 note 文本、而非原型，作为最终交付内容的权威。
 
 ### 零件：ToolCard / Segment / Group
 
@@ -114,7 +114,7 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 
 ### 数据来源：可由文本重建的边界被保留
 
-一个工具是否需要模型可见结果文本以外的结构化数据，本项工作不改变。bash 能从 args 和输出重建 `command` 和退出——`cwd` 来自 call view 的 workdir、由 bridge 按 session cwd 解析（相对或省略的 workdir 在执行器/bridge 里解析，纯 presenter 看不到）——这正是为什么它是今天唯一*不*用 `presentationMeta` 的卡片（这里它会拿到一个，替换它 `parseExitStatus` 的文本往返）。read 的行号、search 的分组、web 的来源在文本里是有损的，所以它们搭 `presentationMeta`——那是唯一在回放中存活的结构化通道，因为 `ToolEventView` 从不持久化。一个 registrant 读工具的 call/result view（客户端从不直接看到 `presentationMeta`；它是宿主侧投影的输入）。不变式 **模型可见 ⟺ 已记录**（[AGENTS.md:105](../../../../AGENTS.md#L105)）成立：模型看到拍平的文本，UI 看到结构化 view，两者出自同一次执行。`run_code` 子调用是这个通道不覆盖的一个形状：它的 `presentationMeta` 被跳过，`tool/code-dispatch` 只记录 arguments/isError/content（[code-mode.ts:508-517](../../../../packages/core/tools/src/code-mode.ts#L508)），所以客户端的子调用 view 是 null（[tool.ts:90](../../../../packages/client/ui-conversation/src/client/conversation-nodes/tool.ts#L90)）——但子调用仍然走同一个 keyed toolview slot，所以一个已注册的 key 以 null view 认领它、灯只能报告 null-view 形状暴露的东西（`isError: true` → 红）。null-view 子调用形状在 PR 1b 补上之前无人拥有；在此之前，一个被取消的子调用诚实地读红、绝不读琥珀，因为没有任何东西持久化它的 abort code。
+一个工具是否需要模型可见结果文本以外的结构化数据，本项工作不改变。bash 能从 args 和输出重建 `command` 和退出——`cwd` 来自 call view 的 workdir、由 bridge 按 session cwd 解析（相对或省略的 workdir 在执行器/bridge 里解析，纯 presenter 看不到）——这正是为什么它是今天唯一*不*用 `presentationMeta` 的卡片（这里它会拿到一个，替换它 `parseExitStatus` 的文本往返）。read 的行号、search 的分组、web 的来源在文本里是有损的，所以它们搭 `presentationMeta`——那是唯一在回放中存活的结构化通道，因为 `ToolEventView` 从不持久化。一个 registrant 读工具的 call/result view（客户端从不直接看到 `presentationMeta`；它是宿主侧投影的输入）。不变式 **模型可见 ⟺ 已记录**（[AGENTS.md §Conventions](../../../../AGENTS.md#conventions)）成立：模型看到拍平的文本，UI 看到结构化 view，两者出自同一次执行。`run_code` 子调用是这个通道不覆盖的一个形状：它的 `presentationMeta` 被跳过，`tool/code-dispatch` 只记录 arguments/isError/content（[code-mode.ts:508-517](../../../../packages/core/tools/src/code-mode.ts#L508)），所以客户端的子调用 view 是 null（[tool.ts:90](../../../../packages/client/ui-conversation/src/client/conversation-nodes/tool.ts#L90)）——但子调用仍然走同一个 keyed toolview slot，所以一个已注册的 key 以 null view 认领它、灯只能报告 null-view 形状暴露的东西（`isError: true` → 红）。null-view 子调用形状在 PR 1b 补上之前无人拥有；在此之前，一个被取消的子调用诚实地读红、绝不读琥珀，因为没有任何东西持久化它的 abort code。
 
 ### 递归整体延后
 
@@ -173,10 +173,10 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 - **wire 不可信。** `sessions.schema.ts` 只校验 `for` + `card: string`；每个 registrant 都必须防御性地重新收窄自己的 view，否则一个畸形 payload 会让它那一行崩——这正是 card model 今天保持的纪律，现在住进每个 registrant 里。
 - **一个 key、两个生产方。** `bash` key 由 `tool-bash` 与 `tool-bash-persistent` 共享（部署挂哪个是哪个），所以 `bash` registrant 从 PR 1b 起就同时渲染两者——它没法等持久工具那份延后的结构化结果。它的无 meta 文本可重建路径不是可选的润色，而是持久生产方所依赖的兼容形态；PR 1b 负责测它。（`tool-pwsh` 注册自己的 `pwsh` key、到自己的 PR 2 迁移前用自己的 presenter，所以 `bash` registrant 绝不渲染它——它消费的共享 `parseExitStatus` seam 是代码、不是渲染路径。）
 - **回放窗口里 call 落在窗外。** 一个分页回放窗口可能从一个 `tool/result` 开始、而它的 `tool/call` 落在窗外；Host 跳过 `presentResult`、客户端节点 `call: null`，所以通用 fallback 没有 args JSON、bash 的 no-meta 路径也没有 `command` 可重建。两者对该节点降级为只渲染结果文本（无 IN 段），直到向上翻页把 call 带进来——一个有界、自愈的降级，不是错误渲染。
-- **回放纯度。** presentation 方法和灯 helper 跑在实时和回放两条路上，必须保持是 view 的纯函数（args + result meta），无 I/O、时钟、会话状态——纯度契约覆盖 presentation 方法（[AGENTS.md:121](../../../../AGENTS.md#L121)，[adding-a-tool.md](../../../../docs/cookbook/adding-a-tool.md)）；registrant 是消费显式传入快照的 UI adapter。
+- **回放纯度。** presentation 方法和灯 helper 跑在实时和回放两条路上，必须保持是 view 的纯函数（args + result meta），无 I/O、时钟、会话状态——纯度契约覆盖 presentation 方法（[AGENTS.md §Conventions](../../../../AGENTS.md#conventions)，[adding-a-tool.md](../../../../docs/cookbook/adding-a-tool.md)）；registrant 是消费显式传入快照的 UI adapter。
 - **一致性靠约定。** 因为一个工具可以重构整行，行到行的视觉一致性依赖内建们遵循默认 helper、而非一个中央锁；快照套件是抓住漂移行的东西。
 - **放弃了什么。** 统一状态意味着今天*不*显示卡内状态的工具行会拿到一个灯；对确实无法观察的结果，诚实的值是灰、绝不是伪造的绿。四样东西延后：一次联合多命令调用的逐命令 `Group`；一个结构化的逐回合结果、好让一次*成功*的持久/PTY 回合能读作 done（今天一次零退出的回合不留记号、且这些工具不带结构化结果，所以一个纯呈现器只能重建一次失败的持久 shell 回合、原始 PTY 回合一个都重建不了）；嵌套 `Group` 递归；以及 `run_code` 子调用的持久化 abort code，所以一个被取消的子调用保持诚实显红、而非琥珀。在它们落地前，一次多命令调用直接在一个灯下组合 Segment（不用 `Group`），每个交互回合是它自己的卡片、非零退出显红、成功显灰，一条超时的命令在 PR 1b 的结构化 bash 结果把 `timedOut` 喂进灯之前读作信号/退出红。
-- **AGENTS.md 漂移。** [AGENTS.md:121](../../../../AGENTS.md#L121) 仍列三种卡片 kind；render-intent 联合已经更多。本工作应在同一个 PR 里更新那一行和 render-intent 设计 note。
+- **AGENTS.md 漂移。** [AGENTS.md §Conventions](../../../../AGENTS.md#conventions) 仍列三种卡片 kind；render-intent 联合已经更多。本工作应在同一个 PR 里更新那一行和 render-intent 设计 note。
 
 ## 取代
 

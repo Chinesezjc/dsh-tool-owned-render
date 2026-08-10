@@ -161,7 +161,7 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 
 - `@deepseek-ai/dsh-client-tool-render` 存在，装着 `ToolCard` 和 `Segment` 零件 + 默认 helper（`Group` 零件随它的首个生产方落地）和灯 helper；`ui-tool` 依赖它、并像今天一样挂载 toolview slot。抽包（PR 1a）不改行为、不改像素（快照不变）。
 - bash 和另一个工具渲染为组合零件的 registrant；对这两个工具，`GenericToolCard` 和 `bash-sample` 里的两步状态推导被替换为一套灯 helper（ui-skill 的 `SkillRowState` 保持工具自有——问题陈述把它计为第五套编码，但灯 helper 不取代它）。
-- bash 经 `presentationMeta` 承载它的结构化结果（command、输出、退出/信号/超时/timedOut——cwd 不进投影：`presentationMeta` 是 args 和 canonical value 的纯函数，canonical bash result 不带 cwd，解析后的 workdir 从不进入 value；cwd 从 call view 渲染，由 bridge 按 session cwd 解析）；它的 `parseExitStatus` 文本往返消失；模型可见的 bash 文本不变（快照）。一次单命令调用渲染为一个灯；一次联合多命令调用直接在一个灯下组合 Segment、不用 `Group`（逐命令 `Group` 是延后的 executor 改动）；单命令情形与今天的 `TerminalBlock` 视觉等价（快照）。
+- bash 经 `presentationMeta` 承载它的结构化结果（输出、退出/信号/超时/timedOut——不带 `command`：它可从 args 恢复、由 call view 渲染，持久化只会放大日志；cwd 不进投影：`presentationMeta` 是 args 和 canonical value 的纯函数，canonical bash result 不带 cwd，解析后的 workdir 从不进入 value；cwd 从 call view 渲染，由 bridge 按 session cwd 解析）；它的 `parseExitStatus` 文本往返消失；模型可见的 bash 文本不变（快照）。一次单命令调用渲染为一个灯；一次联合多命令调用直接在一个灯下组合 Segment、不用 `Group`（逐命令 `Group` 是延后的 executor 改动）；单命令情形与今天的 `TerminalBlock` 视觉等价（快照）。
 - 七个内建 registrant 经 `registerToolView` 注册；`ask_user_question` 和 `todo_write` 设 `views: ['chat']`（快照不变）。
 - 每个 `ToolCard` 一个 gutter 宽对齐每个 Segment 的 body；行号始终可见；空的和无输入的 segment 按规则折叠；逐 segment 的 IN/OUT 复制可用。
 - 改一个已转换工具的渲染只触及那个工具的 registrant 模块（由 1d 不触及任何 bash 文件来演示）；PR 2 后不存在中央渲染分发、也不存在客户端 render-kind 联合（host 侧的 `ToolCallView`/`ToolResultView` 联合和 ui-tool 的 keyed slot 分发保留，依提案对增量的范围限定）。

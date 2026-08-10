@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-08-03-unified-list-of-blocks-tool-render.md
-2026-08-03-unified-list-of-blocks-tool-render.md: a46de6dc7abaaddf06150d3996f45edd6e07ea95
-2026-08-03-unified-list-of-blocks-tool-render.zh.md: 5342345be0cde80e58bc55da935b736fc41aa8ff
+2026-08-03-unified-list-of-blocks-tool-render.md: bc8301a005f3554380bf7bb93c60dde38625d514
+2026-08-03-unified-list-of-blocks-tool-render.zh.md: a3d7a85b8dbfd17f85372372da1c4b811682183b

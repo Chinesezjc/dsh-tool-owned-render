@@ -93,7 +93,7 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 |---|---|---|---|
 | bash（1 条命令） | prompt 行：cwd + command | 输出文本（无行号） | 退出/信号/超时/中止 |
 | bash（N 条命令） | 原始 `command` 作为一条 prompt 行（单个 `command`；逐命令拆分是延后的 executor 改动） | 合并输出 | 今天不用 `Group`——一个可观察结果、一个灯、直接组合 Segment；逐命令 `Group` 需延后的 executor 改动 |
-| bash（交互式） | 该回合的 prompt 行 | 回合输出 | 每个回合是它自己的 `bash` 调用；逐回合 done/error 需持久 shell 工具的规范值先保留回合退出码（今天它只作为非零 `[exit code: N]` 记号进入持久化数据，而 `tool-bash-persistent` 没有结构化结果）——延后；在此之前灰 |
+| bash（交互式） | 该回合的 prompt 行 | 回合输出 | 每个回合是它自己的 `bash` 调用；持久 shell 回合非零退出显红、成功显灰（它的 `[exit code: N]` 记号可重建），而 raw PTY 回合始终显灰——逐回合 done/error 也需持久 shell 工具的规范值先保留回合退出码（今天成功不留记号、且 `tool-bash-persistent` 没有结构化结果）——延后 |
 | read | 路径 + 行范围 | 带号文件行 | done/error |
 | write / edit | `path` | 应用后的 diff，真实的（旧/）新行号 | done/error |
 | grep | 查询 + 范围 | 匹配组（行号）+ 恢复定位（第 2 个 OUT） | done/error |
@@ -175,7 +175,7 @@ ToolCard   — the card frame (border, padding, the transcript row shell)
 - **回放窗口里 call 落在窗外。** 一个分页回放窗口可能从一个 `tool/result` 开始、而它的 `tool/call` 落在窗外；Host 跳过 `presentResult`、客户端节点 `call: null`，所以通用 fallback 没有 args JSON、bash 的 no-meta 路径也没有 `command` 可重建。两者对该节点降级为只渲染结果文本（无 IN 段），直到向上翻页把 call 带进来——一个有界、自愈的降级，不是错误渲染。
 - **回放纯度。** presentation 方法和灯 helper 跑在实时和回放两条路上，必须是显式传入输入的纯函数——无 I/O、时钟、会话状态（纯度契约覆盖 presentation 方法，[AGENTS.md §Conventions](../../../../AGENTS.md#conventions)，[adding-a-tool.md](../../../../docs/cookbook/adding-a-tool.md)）。纯输入因函数而异：**`presentCall`** 只是 args 的纯函数；**`presentResult`** 是 args 和完整 `ToolResult` 的纯函数——`content`、`isError` 和可选的 `meta`（[tools/index.ts:273-288](../../../../packages/core/tools/src/index.ts#L273)），`presentBashResult` 读它们来组合失败调用的 generic view（[tool-bash/index.ts:124-135](../../../../packages/bash/tool-bash/src/index.ts#L124)）；而**灯 helper** 是客户端冻结 `ToolCallBlock` 的纯函数——从它抽出的最小状态记录，因为它的通用失败和取消分支读 `ToolResultNode.isError` 和 `block.error.code`，二者都不在 `ToolResultView`、也不在 args/meta 里（见数据来源一节）。registrant 是消费显式传入快照的 UI adapter。
 - **一致性靠约定。** 因为一个工具可以重构整行，行到行的视觉一致性依赖内建们遵循默认 helper、而非一个中央锁；快照套件是抓住漂移行的东西。
-- **放弃了什么。** 统一状态意味着今天*不*显示卡内状态的工具行会拿到一个灯；对确实无法观察的结果，诚实的值是灰、绝不是伪造的绿。四样东西延后：一次联合多命令调用的逐命令 `Group`；一个结构化的逐回合结果、好让一次*成功*的持久/PTY 回合能读作 done（今天一次零退出的回合不留记号、且这些工具不带结构化结果，所以一个纯呈现器只能重建一次失败的持久 shell 回合、原始 PTY 回合一个都重建不了）；嵌套 `Group` 递归；以及 `run_code` 子调用的持久化 abort code，所以一个被取消的子调用保持诚实显红、而非琥珀。在它们落地前，一次多命令调用直接在一个灯下组合 Segment（不用 `Group`），每个交互回合是它自己的卡片：持久 shell 回合非零退出显红、成功显灰（它的 `[exit code: N]` 记号可重建），而 raw PTY 回合始终显灰——它的 `terminal_send` meta 只带 `viewport`/`waitReason`/`sessionStatus`/`truncated`、没有退出码，所以非零退出在那里无法重建、显红会是伪造的而非观察到的。一条超时的命令在 PR 1b 的结构化 bash 结果把 `timedOut` 喂进灯之前读作信号/退出红。
+- **放弃了什么。** 统一状态意味着今天*不*显示卡内状态的工具行会拿到一个灯；对确实无法观察的结果，诚实的值是灰、绝不是伪造的绿。四样东西延后：一次联合多命令调用的逐命令 `Group`；一个结构化的逐回合结果、好让一次*成功*的持久/PTY 回合能读作 done（今天一次零退出的回合不留记号、且这些工具不带结构化结果，所以一个纯呈现器只能重建一次失败的持久 shell 回合、原始 PTY 回合一个都重建不了）；嵌套 `Group` 递归；以及 `run_code` 子调用的持久化 abort code，所以一个被取消的子调用保持诚实显红、而非琥珀。在它们落地前，一次多命令调用直接在一个灯下组合 Segment（不用 `Group`），每个交互回合是它自己的卡片：持久 shell 回合非零退出显红、成功显灰（它的 `[exit code: N]` 记号可重建），而 raw PTY 回合始终显灰——它的 `terminal_send` meta 只带 `viewport`/`waitReason`/`sessionStatus`/`truncated`、没有逐命令退出码（`sessionStatus` 只区分 running 和 session 退出），所以非零退出在那里无法重建、显红会是伪造的而非观察到的。一条超时的 bash 命令在 PR 1b 的结构化 bash 结果把 `timedOut` 喂进灯之前读作信号/退出红。
 - **AGENTS.md 漂移。** [AGENTS.md §Conventions](../../../../AGENTS.md#conventions) 仍列三种卡片 kind；render-intent 联合已经更多。本工作应在同一个 PR 里更新那一行和 render-intent 设计 note。
 
 ## 取代

@@ -2,7 +2,7 @@
 
 Status: proposed
 
-English | [中文](2026-08-03-unified-list-of-blocks-tool-render.zh.md)
+English | [中文](tool-owned-render.zh.md)
 
 ## Problem
 

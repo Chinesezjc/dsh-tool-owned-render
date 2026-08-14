@@ -1,6 +1,5 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-08-03-unified-list-of-blocks-tool-render.md
-2026-08-03-unified-list-of-blocks-tool-render.md: efafce312cdb9023f2b1bf33fe701756e86c331a
-2026-08-03-unified-list-of-blocks-tool-render.zh.md: 51beb3d0e5d2a6c89ca0a479caf40849dbd4422a
+# Bilingual-pair consistency record: the git blob hash of each side as of the last
+# confirmed-consistent state. Both languages carry equal authority; after editing
+# either side, bring the other along and re-record both hashes here.
+tool-owned-render.md: 2d4322b5ff8a2574820360f71513158666ed2a5d
+tool-owned-render.zh.md: 048a1d53bc516f7c75d22d7441056a7f6dbb4728

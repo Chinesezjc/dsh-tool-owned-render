@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>渲染归工具所有 — ToolCard · Segment · 可选 Group</title>
+<style>
+  body{
+    --dsw-font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Helvetica,Arial,sans-serif;
+    --ds-font-family-code:'SF Mono','JetBrains Mono','Fira Code',Consolas,'Liberation Mono',Menlo,Courier,'PingFang SC','Microsoft YaHei';
+    --dsw-font-markdown-code-block:13px/22px var(--ds-font-family-code);
+    --dsw-font-xs-13:13px/20px var(--dsw-font-family);
+    --dsw-font-xxs-12:12px/18px var(--dsw-font-family);
+    --dsw-static-deepseek-450:#5686FE;
+    --dsw-alias-bg-base:#FFFFFF;--dsw-alias-bg-layer-2:#FFFFFF;
+    --dsw-alias-markdown-code-block:#F9FAFB;--dsw-alias-markdown-code-block-banner:#F9FAFB;
+    --dsw-alias-label-primary:#0F1115;--dsw-alias-label-secondary:#61666B;
+    --dsw-alias-label-tertiary:#81858C;--dsw-alias-label-caption:#ADB2B8;
+    --dsw-alias-border-l2:rgba(0,0,0,0.1);
+    --dsw-alias-state-error-primary:#EC1313;--dsw-alias-state-success-primary:#22C55E;--dsw-alias-state-warn-primary:#F59E0B;
+    --dsl-radius:12px;--dsl-lh:22px;
+    --lampcol:26px;
+    /* ui-theme 主题化滚动条 token 对：静止透明，指针悬停 segment 时上 l2 色（指针显隐） */
+    --dsh-scrollbar-thumb:transparent;
+    --dsh-scrollbar-thumb-hover:var(--dsw-alias-label-tertiary);
+  }
+  body[data-ds-dark-theme]{
+    --dsw-alias-bg-base:#151517;--dsw-alias-bg-layer-2:#2C2C2E;
+    --dsw-alias-markdown-code-block:#1B1B1C;--dsw-alias-markdown-code-block-banner:#2C2C2E;
+    --dsw-alias-label-primary:#F9FAFB;--dsw-alias-label-secondary:#CFD3D6;
+    --dsw-alias-label-tertiary:#ADB2B8;--dsw-alias-label-caption:#81858C;
+    --dsw-alias-border-l2:rgba(255,255,255,0.12);
+    --dsw-alias-state-error-primary:#F25A5A;--dsw-alias-state-success-primary:#22C55E;--dsw-alias-state-warn-primary:#F59E0B;
+  }
+  body{margin:0;padding:24px 28px 64px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family)}
+  h1{font-size:15px;font-weight:600;margin:0 0 4px}
+  .sub{color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12);margin:0 0 16px;max-width:820px;line-height:1.6}
+  .themeBtn{font:var(--dsw-font-xs-13);padding:4px 12px;border-radius:8px;cursor:pointer;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l2);margin-bottom:16px}
+  .caseLabel{font:var(--dsw-font-xxs-12);font-weight:600;color:var(--dsw-alias-label-tertiary);margin:26px 0 4px;text-transform:uppercase;letter-spacing:.04em}
+  .wrap{max-width:820px}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 10px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+
+  /* 灯（StateDot） */
+  .dot{position:relative;display:inline-block;width:10px;height:10px;vertical-align:middle}
+  .dot::before{content:"";position:absolute;inset:0;border-radius:50%;background:currentColor;opacity:.1}
+  .dot::after{content:"";position:absolute;inset:20%;border-radius:50%;background:currentColor}
+  .dot-done{color:var(--dsw-alias-state-success-primary)}
+  .dot-error{color:var(--dsw-alias-state-error-primary)}
+  .dot-warn{color:var(--dsw-alias-state-warn-primary)}
+  .dot-neutral{color:var(--dsw-alias-label-caption)}
+  .matrix{position:relative;display:inline-block;width:10px;height:10px;color:var(--dsw-static-deepseek-450);vertical-align:middle}
+  .matrix i{position:absolute;width:2px;height:2px;background:currentColor;opacity:.15;animation:chase 1s infinite}
+  .matrix i:nth-child(1){left:0;top:0;animation-delay:-1000ms}.matrix i:nth-child(2){left:4px;top:0;animation-delay:-875ms}
+  .matrix i:nth-child(3){left:8px;top:0;animation-delay:-750ms}.matrix i:nth-child(4){left:8px;top:4px;animation-delay:-625ms}
+  .matrix i:nth-child(5){left:8px;top:8px;animation-delay:-500ms}.matrix i:nth-child(6){left:4px;top:8px;animation-delay:-375ms}
+  .matrix i:nth-child(7){left:0;top:8px;animation-delay:-250ms}.matrix i:nth-child(8){left:0;top:4px;animation-delay:-125ms}
+  @keyframes chase{0%,12.4%{opacity:1}12.5%,24.9%{opacity:.6}25%,37.4%{opacity:.35}37.5%,100%{opacity:.15}}
+
+  .pill{display:inline-flex;align-items:center;height:18px;padding:0 8px;border-radius:12px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);font-family:var(--dsw-font-family);margin-left:8px;vertical-align:middle}
+  .pill.err{color:var(--dsw-alias-state-error-primary)}.pill.wn{color:var(--dsw-alias-state-warn-primary)}
+
+  /* ===== 零件 =====
+     ToolCard（框，工具可自己画/替换）> Segment（核心单元，多数工具直接组合它）
+       > 可选 Group（把多个 Segment 归到一个灯下，仅多执行工具用）。
+     每个 Segment = 一个滚动区，内部两列 grid [gutter][正文]：
+       gutter 按 role 互斥：IN 段填【灯】(段一般一行不滚、灯自然不动)；
+                            OUT 段填【行号】(仅 read/grep/diff，随正文一起滚)。
+       OUT 段超高 → 固定高度、行号+正文一起纵向滚。 */
+  .toolcard{margin:0 0 14px;background:var(--dsw-alias-markdown-code-block);border-radius:var(--dsl-radius);overflow:hidden;font:var(--dsw-font-markdown-code-block);color:var(--dsw-alias-label-primary)}
+  /* Group：多执行工具用，组间分隔线 */
+  .group + .group{border-top:1px solid var(--dsw-alias-border-l2)}
+  .seg-out{border-top:1px solid var(--dsw-alias-border-l2)}
+
+  /* Segment 外壳：不滚动，做复制键的定位父 + 段边框 */
+  .seg{position:relative}
+  /* 滚动区：原生滚动条，经 ui-theme token 上皮（指针显隐） */
+  .scroll{overflow:auto;display:grid;grid-template-columns:var(--gutter,max-content) minmax(0,1fr);align-content:start;padding:8px 0;
+          scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:var(--dsh-scrollbar-thumb) transparent}
+  .scroll::-webkit-scrollbar{width:8px;height:8px}
+  .scroll::-webkit-scrollbar-thumb{background:var(--dsh-scrollbar-thumb);border-radius:4px}
+  .scroll::-webkit-scrollbar-track{background:transparent}
+  /* 指针悬停该 segment 时，token 对重绑到 l2 色 → 滚动条显现（静止透明，什么都不位移） */
+  .seg:hover .scroll,.seg:focus-within .scroll{--dsh-scrollbar-thumb:var(--dsh-scrollbar-thumb-hover)}
+  .scroll.cap{max-height:132px}
+  /* gutter 列：IN 段放灯（左对齐），OUT 段放行号（右对齐）；互斥，同一列 */
+  .ln{grid-column:1;text-align:right;padding:0 8px 0 12px;color:var(--dsw-alias-label-tertiary);user-select:none;line-height:var(--dsl-lh);white-space:nowrap}
+  .ln.lamp{text-align:left;padding-left:10px;padding-right:8px}
+  /* 正文列 */
+  .tx{grid-column:2;padding-right:14px;white-space:pre;line-height:var(--dsl-lh);color:var(--dsw-alias-label-secondary)}
+  .tx-in{color:var(--dsw-alias-label-primary);padding-right:56px}
+
+  /* 段级控件组：hover 段浮现，钉外壳右上角，不随内容滚。[展开][复制] 一组 */
+  .seg-tools{position:absolute;top:6px;right:10px;z-index:3;display:flex;gap:2px;opacity:0;transition:opacity .12s ease}
+  .seg:hover .seg-tools,.seg-tools:focus-within{opacity:1}
+  .seg-btn{color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);
+           background:var(--dsw-alias-markdown-code-block);border:none;cursor:pointer;padding:1px 6px;border-radius:6px}
+  .seg-btn:hover{background:var(--dsw-alias-bg-layer-2)}
+
+  .r-cwd{color:var(--dsw-alias-label-tertiary)}
+  .diff-del{color:var(--dsw-alias-state-error-primary)}
+  .diff-add{color:var(--dsw-alias-state-success-primary)}
+  .diff-foot{color:var(--dsw-alias-label-tertiary)}
+  .s-file{color:var(--dsw-alias-label-primary)}
+  .w-src{color:var(--dsw-static-deepseek-450);text-decoration:none}
+  a.w-src:hover{text-decoration:underline}
+  a.w-url{color:var(--dsw-static-deepseek-450);text-decoration:none}
+  a.w-url:hover{text-decoration:underline}
+  .w-status{color:var(--dsw-alias-state-success-primary)}
+  .w-snip{color:var(--dsw-alias-label-tertiary)}
+  .subtle{color:var(--dsw-alias-label-tertiary);font-style:italic}
+  .err-txt{color:var(--dsw-alias-state-error-primary)}
+  /* 大 IN 滚动段的灯：钉在 seg 外壳左上（不随内容滚），对齐 gutter 列/首行 */
+  .seg-lamp{position:absolute;left:10px;top:16px;transform:translateY(-50%);z-index:3}
+
+  /* ===== 两条路 分区标题 ===== */
+  .phase{font:var(--dsw-font-xxs-12);font-weight:700;letter-spacing:.04em;margin:34px 0 4px;padding-bottom:6px;border-bottom:1px solid var(--dsw-alias-border-l2)}
+  .tag-own{display:inline-block;font:var(--dsw-font-xxs-12);color:var(--dsw-static-deepseek-450);border:1px solid var(--dsw-static-deepseek-450);border-radius:5px;padding:0 6px;margin-left:6px}
+  .tag-fallback{display:inline-block;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-tertiary);border:1px solid var(--dsw-alias-border-l2);border-radius:5px;padding:0 6px;margin-left:6px}
+  .tag-defer{display:inline-block;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-state-warn-primary);border:1px solid var(--dsw-alias-state-warn-primary);border-radius:5px;padding:0 6px;margin-left:6px}
+  .kv{display:grid;grid-template-columns:max-content 1fr;gap:2px 16px;margin:0}
+  .kv dt{color:var(--dsw-alias-label-tertiary)}.kv dd{margin:0;color:var(--dsw-alias-label-primary)}
+  .lnk{color:var(--dsw-static-deepseek-450);text-decoration:none}.lnk:hover{text-decoration:underline}
+  .notice{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:8px;font:var(--dsw-font-xxs-12)}
+  .notice.warn{background:rgba(245,158,11,.12);color:var(--dsw-alias-state-warn-primary)}
+  .notice.err{background:rgba(236,19,19,.1);color:var(--dsw-alias-state-error-primary)}
+  .notice.info{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
+  .btnrow{display:flex;gap:8px;margin-top:6px}
+  .btn{font:var(--dsw-font-xs-13);padding:3px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
+  .btn.primary{background:var(--dsw-static-deepseek-450);color:#fff;border-color:transparent}
+  table.rkt{border-collapse:collapse;font:var(--dsw-font-markdown-code-block)}
+  table.rkt th,table.rkt td{border:1px solid var(--dsw-alias-border-l2);padding:2px 10px;text-align:left}
+  table.rkt th{color:var(--dsw-alias-label-tertiary);font-weight:600}table.rkt td{color:var(--dsw-alias-label-primary)}
+  .imgph{border:1px solid var(--dsw-alias-border-l2);border-radius:8px;width:200px;height:100px;background:repeating-linear-gradient(45deg,var(--dsw-alias-bg-layer-2),var(--dsw-alias-bg-layer-2) 8px,transparent 8px,transparent 16px);display:flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xxs-12)}
+  /* 侧边预览面板（二级全屏示意）：VSCode 风格标题栏 + 行号 + 行 hover */
+  .fs-mask{position:fixed;inset:0;background:var(--dsw-alias-bg-base);z-index:100;display:none;flex-direction:column}
+  .fs-mask.on{display:flex}
+  body.fs-lock{overflow:hidden}
+  .fs-bar{flex:none;display:flex;align-items:center;gap:10px;height:38px;padding:0 12px 0 16px;
+          background:var(--dsw-alias-markdown-code-block-banner);border-bottom:1px solid var(--dsw-alias-border-l2)}
+  .fs-icon{flex:none;color:var(--dsw-static-deepseek-450);font-size:13px}
+  .fs-title{flex:1;min-width:0;color:var(--dsw-alias-label-primary);font:var(--dsw-font-xs-13);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fs-title .dim{color:var(--dsw-alias-label-tertiary)}
+  .fs-close{flex:none;color:var(--dsw-alias-label-secondary);background:transparent;border:none;cursor:pointer;padding:4px 8px;border-radius:6px;font:var(--dsw-font-xs-13)}
+  .fs-close:hover{background:var(--dsw-alias-bg-layer-2)}
+  .fs-box{flex:1;overflow:auto;background:var(--dsw-alias-markdown-code-block);padding:8px 0;font:var(--dsw-font-markdown-code-block);position:relative;
+          scrollbar-width:thin;scrollbar-color:var(--dsw-alias-label-tertiary) transparent}
+  .fs-box::-webkit-scrollbar{width:10px;height:10px}
+  .fs-box::-webkit-scrollbar-thumb{background:var(--dsw-alias-label-tertiary);border-radius:5px}
+  .fs-box .scroll{max-height:none;overflow:visible;display:grid;grid-template-columns:max-content minmax(0,1fr)}
+  .fs-box .tx:hover{background:var(--dsw-alias-bg-layer-2)}
+</style>
+</head>
+<body data-ds-dark-theme>
+<script>
+// 压测：生成 500×500 大文件的 read/write/edit 段
+function buildBig(){
+  const W=500, N=500
+  const wide=i=>{
+    const base=`const value_${i} = compute(${i}, ctx, options) /* `
+    return base + 'x'.repeat(Math.max(0, W-base.length-2)) + '*/'
+  }
+  const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  const rowsHtml=(rows)=>rows.map(r=>`<span class="${r.lc}">${r.n}</span><span class="${r.tc}">${esc(r.t)}</span>`).join('')
+  const outSeg=(rows)=>`<div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div><div class="scroll cap">${rowsHtml(rows)}</div></div>`
+  const inSeg=(txt)=>`<div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div><div class="scroll"><span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">${txt}</span></div></div>`
+
+  const rRows=[]; for(let i=1;i<=N;i++) rRows.push({lc:'ln',n:i,tc:'tx',t:wide(i)})
+  document.getElementById('big-read').innerHTML = inSeg('vendor/generated/huge.ts <span class="r-cwd">1–500</span>')+outSeg(rRows)
+
+  const wRows=[]; for(let i=1;i<=N;i++) wRows.push({lc:'ln diff-add',n:i,tc:'tx diff-add',t:wide(i)})
+  wRows.push({lc:'ln',n:'',tc:'tx',t:'+500 -0 · 1 file'})
+  document.getElementById('big-write').innerHTML = inSeg('vendor/generated/huge.ts')+outSeg(wRows)
+
+  const eRows=[]
+  for(let i=1;i<=N;i++){
+    if(i%40===0){
+      eRows.push({lc:'ln diff-del',n:i,tc:'tx diff-del',t:wide(i)})
+      eRows.push({lc:'ln diff-add',n:i,tc:'tx diff-add',t:wide(i).replace('compute','computeV2')})
+    } else { eRows.push({lc:'ln',n:i,tc:'tx',t:wide(i)}) }
+  }
+  eRows.push({lc:'ln',n:'',tc:'tx',t:'+12 -12 · 1 file'})
+  document.getElementById('big-edit').innerHTML = inSeg('vendor/generated/huge.ts')+outSeg(eRows)
+
+  // 大 IN（IN 段自身固定高度滚动）：灯钉在 seg 外壳（不随内容滚），gutter 全空（IN 无行号）
+  const inScroll=(rows)=>{
+    const body=rows.map(r=>`<span class="ln"></span><span class="tx tx-in">${esc(r.t)}</span>`).join('')
+    return `<div class="seg seg-in"><span class="seg-lamp"><span class="dot dot-done"></span></span><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div><div class="scroll cap">${body}</div></div>`
+  }
+  const pyLines=[]; for(let i=1;i<=200;i++){
+    const t = i===1?'import sys, json, math':
+      i===2?'from dataclasses import dataclass':
+      i%20===0?`def handler_${i}(ctx, opts):`:
+      i%20===1?`    """auto-generated handler ${i}"""`:
+      `    result_${i} = compute(${i}, ctx) if ctx else fallback(${i})`
+    pyLines.push({t})
+  }
+  document.getElementById('big-in-py').innerHTML =
+    inScroll(pyLines.map((l,i)=>({t:(i===0?'python3 << \'EOF\'':'')+l.t})))+
+    outSeg([{lc:'ln',n:'',tc:'tx',t:'ran 200 lines · 0 errors · 1.4s'}])
+
+  const wc=[]; for(let i=1;i<=180;i++) wc.push({t:i===1?'write config.generated.ts':`export const K_${i} = { id: ${i}, name: "item_${i}", enabled: ${i%2===0} }`})
+  document.getElementById('big-in-write').innerHTML =
+    inScroll(wc)+outSeg([{lc:'ln diff-add',n:1,tc:'tx diff-add',t:'(180 行全部新增)'},{lc:'ln',n:'',tc:'tx',t:'+180 -0 · 1 file'}])
+
+  const jl=['{','  "pipeline": [']; for(let i=1;i<=120;i++) jl.push(`    { "step": ${i}, "op": "transform", "args": { "field": "col_${i}", "mode": "strict" } }${i<120?',':''}`); jl.push('  ]','}')
+  document.getElementById('big-in-json').innerHTML =
+    inScroll(jl.map((t)=>({t})))+outSeg([{lc:'ln',n:'',tc:'tx',t:'pipeline registered: 120 steps'}])
+
+  const bigIn=[]; for(let i=1;i<=100;i++) bigIn.push({t:i===1?'python3 << \'EOF\'':`    process_batch(${i})`})
+  const bigOut=[]; for(let i=1;i<=100;i++) bigOut.push({lc:'ln',n:'',tc:'tx',t:`[batch ${i}] processed ${i*37} records`})
+  document.getElementById('big-in-out').innerHTML = inScroll(bigIn)+outSeg(bigOut)
+}
+window.addEventListener('DOMContentLoaded',buildBig)
+</script>
+<script>
+// 每个 ToolCard：测量最宽的 gutter 内容（灯或行号），设 --gutter，让全卡 IN/OUT 正文线对齐。
+function layoutGutters(){
+  for(const card of document.querySelectorAll('.toolcard')){
+    card.style.setProperty('--gutter','max-content')
+    let max=0
+    for(const ln of card.querySelectorAll('.ln')){
+      const w=ln.getBoundingClientRect().width
+      if(w>max)max=w
+    }
+    card.style.setProperty('--gutter', Math.max(26, Math.ceil(max))+'px')
+  }
+}
+window.addEventListener('DOMContentLoaded',()=>{requestAnimationFrame(layoutGutters)})
+
+// 侧边预览面板（二级全屏示意）：标题栏 + 行号 + 行 hover。真实实现复用各工具自己的 registrant 组件 + shiki。
+function initFullscreen(){
+  const mask=document.createElement('div'); mask.className='fs-mask'
+  const bar=document.createElement('div'); bar.className='fs-bar'
+  const icon=document.createElement('span'); icon.className='fs-icon'
+  const title=document.createElement('div'); title.className='fs-title'
+  const close=document.createElement('button'); close.className='fs-close'; close.textContent='关闭 ✕'
+  bar.append(icon,title,close)
+  const box=document.createElement('div'); box.className='fs-box'
+  mask.append(bar,box); document.body.appendChild(mask)
+  const hide=()=>{mask.classList.remove('on'); box.innerHTML=''; document.body.classList.remove('fs-lock')}
+  close.onclick=hide
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')hide()})
+
+  for(const grp of document.querySelectorAll('.seg-tools')){
+    grp.querySelector('.seg-btn').onclick=()=>{
+      const seg=grp.closest('.seg'), card=seg.closest('.toolcard')
+      // 标题：取同 Group（或整卡）内的 IN 行文本作上下文
+      const scope=seg.closest('.group')||card
+      const inTx=scope.querySelector('.seg-in .tx')
+      title.innerHTML = inTx ? inTx.textContent.trim().replace(/^~ /,'<span class="dim">~ </span>') : '输出'
+      icon.textContent='⤢'
+      const src=seg.querySelector('.scroll')
+      const clone=src.cloneNode(true); clone.classList.remove('cap')
+      clone.style.setProperty('--gutter', card.style.getPropertyValue('--gutter')||'max-content')
+      clone.querySelectorAll('.seg-tools').forEach(n=>n.remove())
+      box.innerHTML=''; box.appendChild(clone); mask.classList.add('on'); document.body.classList.add('fs-lock')
+    }
+  }
+}
+window.addEventListener('DOMContentLoaded',initFullscreen)
+</script>
+<div class="wrap">
+  <div style="display:flex;align-items:center;gap:16px">
+    <h1 style="flex:1">渲染归工具所有 — ToolCard · Segment · 可选 Group</h1>
+    <button class="themeBtn" onclick="document.body.toggleAttribute('data-ds-dark-theme')">切换 明/暗</button>
+  </div>
+  <p class="sub">
+    每个工具自己注册一个 React 组件，组合三个零件：<b>ToolCard</b>(卡片框，工具可自己画/替换) · <b>Segment</b>(核心单元，多数工具直接组合它) · 可选 <b>Group</b>(把多个 Segment 归到一个灯下，仅多执行工具用——多命令 bash / 交互回合)。
+    没有中央渲染分发，也没有 render-kind 联合。<b>两条路</b>：工具自写组件(主路) / generic 零代码兜底。
+    每个 Segment 内部是 [gutter][正文]，gutter <b>按 role 互斥</b>：IN 段放<b>灯</b>；OUT 段放<b>行号</b>(仅 read/grep/diff，随正文滚)。
+    灯：绿成功 / 红失败 / 蓝运行 / 黄取消·超时 / 灰不可观察。滚动条用 ui-theme 主题化原生条(指针悬停 segment 才显)。
+    <br><i>（灰「复制」为示意；⤢ 打开侧边预览面板的二级全屏示意）</i>
+  </p>
+  <div class="legend">
+    <span><span class="matrix"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span> 蓝=运行</span>
+    <span><span class="dot dot-done"></span> 绿=成功</span>
+    <span><span class="dot dot-error"></span> 红=失败</span>
+    <span><span class="dot dot-warn"></span> 黄=取消/超时</span>
+    <span><span class="dot dot-neutral"></span> 灰=不可观察</span>
+  </div>
+
+  <div class="phase">内建工具 — 每个是一个 registrant，组合零件（单执行工具不用 Group）</div>
+
+  <!-- bash -->
+  <div class="caseLabel">bash — IN 段 gutter=灯 / OUT 段 gutter=空(无行号)</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in"><span class="r-cwd">~</span> npm test</span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln"></span><span class="tx">✓ 42 passed (42)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- read 长文件 -->
+  <div class="caseLabel">read 长文件 — OUT 段 gutter=行号，超高滚动：行号跟正文一起滚</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">packages/core/agent-loop.ts <span class="r-cwd">10–…</span></span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll cap">
+        <span class="ln">10</span><span class="tx">export async function runAgentLoop(</span>
+      <span class="ln">11</span><span class="tx">  ctx: Context,</span>
+      <span class="ln">12</span><span class="tx">  opts: LoopOptions,</span>
+      <span class="ln">13</span><span class="tx">): Promise&lt;LoopResult&gt; {</span>
+      <span class="ln">14</span><span class="tx">  const session = ctx.session</span>
+      <span class="ln">15</span><span class="tx">  const agent = ctx.agent</span>
+      <span class="ln">16</span><span class="tx">  for await (const step of stream) {</span>
+      <span class="ln">17</span><span class="tx">    await handle(step)</span>
+      <span class="ln">18</span><span class="tx">  }</span>
+      <span class="ln">19</span><span class="tx">  return result</span>
+      <span class="ln">20</span><span class="tx">}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- write diff -->
+  <div class="caseLabel">write — diff 行号（红删绿加）在 gutter，不是 +/- 记号</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">src/config.ts</span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln diff-del">3</span><span class="tx diff-del">export const PORT = 3000</span>
+      <span class="ln diff-add">3</span><span class="tx diff-add">export const PORT = 8080</span>
+      <span class="ln diff-add">4</span><span class="tx diff-add">export const HOST = '0.0.0.0'</span>
+      <span class="ln"></span><span class="tx"><span class="diff-foot">+2 -1 · 1 file</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- grep 两段 OUT -->
+  <div class="caseLabel">grep — 匹配段（行号）+ recovery 段（第 2 个 OUT）</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">"runAgentLoop" <span class="r-cwd">in packages/</span></span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln"></span><span class="tx"><span class="s-file">packages/core/agent-loop.ts</span></span>
+      <span class="ln">10</span><span class="tx">export async function runAgentLoop(</span>
+      <span class="ln"></span><span class="tx"><span class="s-file">packages/examples/spine.ts</span></span>
+      <span class="ln">42</span><span class="tx">  await runAgentLoop(ctx, opts)</span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln"></span><span class="tx"><span class="subtle">完整结果已存至 grep-result-a1b2.txt（2 处匹配）</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- web_search -->
+  <div class="caseLabel">web_search — 来源序号在 gutter，来源是可点链接</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">vitest snapshot 最佳实践</span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln"></span><span class="tx" style="white-space:normal">Vitest 推荐 toMatchInlineSnapshot 就近保存。</span>
+      <span class="ln">1</span><span class="tx"><a class="w-src" href="https://vitest.dev/guide/snapshot">Vitest Snapshot 指南</a> · vitest.dev</span>
+      <span class="ln">2</span><span class="tx"><a class="w-src" href="https://kentcdodds.com/blog/effective-snapshot-testing">测试快照的取舍</a> · kentcdodds.com</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- web_search 12 条来源：滚动 -->
+  <div class="caseLabel">web_search（12 条来源）— OUT 段固定高度滚动，序号随正文滚</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">react server components 数据获取</span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll cap">
+        <span class="ln"></span><span class="tx" style="white-space:normal">RSC 在服务端获取数据，减少客户端瀑布请求。</span>
+      <span class="ln">1</span><span class="tx"><a class="w-src" href="https://react.dev/reference/rsc/server-components">Server Components — React</a> · react.dev</span>
+      <span class="ln">2</span><span class="tx"><a class="w-src" href="https://nextjs.org/docs/app/building-your-application/data-fetching">Data Fetching — Next.js</a> · nextjs.org</span>
+      <span class="ln">3</span><span class="tx"><a class="w-src" href="https://vercel.com/blog/understanding-react-server-components">Understanding RSC</a> · vercel.com</span>
+      <span class="ln">4</span><span class="tx"><a class="w-src" href="https://www.joshwcomeau.com/react/server-components/">Making Sense of RSC</a> · joshwcomeau.com</span>
+      <span class="ln">5</span><span class="tx"><a class="w-src" href="https://kentcdodds.com/blog/rsc">RSC Explained</a> · kentcdodds.com</span>
+      <span class="ln">6</span><span class="tx"><a class="w-src" href="https://tkdodo.eu/blog/react-query-and-rsc">React Query + RSC</a> · tkdodo.eu</span>
+      <span class="ln">7</span><span class="tx"><a class="w-src" href="https://www.robinwieruch.de/react-server-components/">RSC Tutorial</a> · robinwieruch.de</span>
+      <span class="ln">8</span><span class="tx"><a class="w-src" href="https://blog.logrocket.com/react-server-components/">RSC Deep Dive</a> · logrocket.com</span>
+      <span class="ln">9</span><span class="tx"><a class="w-src" href="https://www.smashingmagazine.com/2024/rsc/">RSC in Practice</a> · smashingmagazine.com</span>
+      <span class="ln">10</span><span class="tx"><a class="w-src" href="https://epicreact.dev/server-components">Epic RSC</a> · epicreact.dev</span>
+      <span class="ln">11</span><span class="tx"><a class="w-src" href="https://www.builder.io/blog/rsc">RSC vs SSR</a> · builder.io</span>
+      <span class="ln">12</span><span class="tx"><a class="w-src" href="https://frontendmasters.com/blog/rsc/">RSC Course</a> · frontendmasters.com</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- web_fetch 两段，body 滚动无行号 -->
+  <div class="caseLabel">web_fetch — 状态段（第 1 个 OUT）+ 正文段（第 2 个 OUT，滚动、无行号）</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in"><a class="w-url" href="https://vitest.dev/guide/snapshot">https://vitest.dev/guide/snapshot</a></span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln"></span><span class="tx"><span class="w-status">HTTP 200</span> · text/html · 已截断</span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll cap">
+        <span class="ln"></span><span class="tx"># Snapshot</span>
+      <span class="ln"></span><span class="tx">Snapshot tests are useful when you want to</span>
+      <span class="ln"></span><span class="tx">make sure the UI does not change unexpectedly.</span>
+      <span class="ln"></span><span class="tx"> </span>
+      <span class="ln"></span><span class="tx">## Updating Snapshots</span>
+      <span class="ln"></span><span class="tx">Run `vitest -u` to update failing snapshots.</span>
+      <span class="ln"></span><span class="tx"> </span>
+      <span class="ln"></span><span class="tx">## Inline Snapshots</span>
+      <span class="ln"></span><span class="tx">Stored inline via toMatchInlineSnapshot.</span>
+      <span class="ln"></span><span class="tx">…（共 3187 行，滚动查看）</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Group 区：多执行工具 ============ -->
+  <div class="phase">Group — 唯一用到分组的形态：一次调用里有多个可观察执行单元</div>
+
+  <!-- REPL 多轮：多 Group -->
+  <div class="caseLabel">交互式 REPL — ToolCard 内多个 Group，每 Group 一对 IN/OUT + 自己的灯（灰=无退出码通道，蓝=当前轮）</div>
+  <div class="toolcard">
+    <div class="group">
+      <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+        <div class="scroll">
+          <span class="ln lamp"><span class="dot dot-neutral"></span></span><span class="tx tx-in"><span class="r-cwd">~</span> python</span>
+        </div>
+      </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+        <div class="scroll">
+          <span class="ln"></span><span class="tx">Python 3.12.2</span>
+        </div>
+      </div>
+    </div><div class="group">
+      <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+        <div class="scroll">
+          <span class="ln lamp"><span class="dot dot-neutral"></span></span><span class="tx tx-in"><span class="r-cwd">&gt;&gt;&gt;</span> import math; math.sqrt(144)</span>
+        </div>
+      </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+        <div class="scroll">
+          <span class="ln"></span><span class="tx">12.0</span>
+        </div>
+      </div>
+    </div><div class="group">
+      <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+        <div class="scroll">
+          <span class="ln lamp"><span class="matrix"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="tx tx-in"><span class="r-cwd">&gt;&gt;&gt;</span> <span class="subtle">（等待输入…）</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 多命令 bash：今天一个 Group（逐命令 Group 是延后的 executor 改动） -->
+  <div class="caseLabel">多命令 bash — 今天整次调用一个 Group / 一个灯（逐命令 Group 需延后的 executor 改动）<span class="tag-defer">逐命令 Group 延后</span></div>
+  <div class="toolcard">
+    <div class="group">
+      <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+        <div class="scroll">
+          <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in"><span class="r-cwd">~</span> cd packages/core && pnpm build && pnpm test</span>
+        </div>
+      </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+        <div class="scroll">
+          <span class="ln"></span><span class="tx">&gt; tsc -b … done</span>
+        <span class="ln"></span><span class="tx">✓ 128 passed (128)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 压测区 ============ -->
+  <div class="phase" style="color:var(--dsw-alias-state-warn-primary)">压测边界情况（都是单执行工具，无 Group）</div>
+
+  <div class="caseLabel">压测1 — 超长单行 minified：横向溢出，行内横向滚</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">dist/bundle.min.js <span class="r-cwd">1</span></span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln">1</span><span class="tx">!function(e){var t={};function n(r){if(t[r])return t[r].exports;var o=t[r]={i:r,l:!1,exports:{}};return e[r].call(o.exports,o,o.exports,n),o.l=!0,o.exports}n.m=e,n.c=t,n.d=function(e,t,r){n.o(e,t)||Object.defineProperty(e,t,{enumerable:!0,get:r})}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="caseLabel">压测2 — 超深缩进（缩进是内容真实的一部分，不折叠）</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">deep.ts <span class="r-cwd">40–43</span></span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln">40</span><span class="tx">              if (deeplyNested) {</span>
+      <span class="ln">41</span><span class="tx">                for (const x of items) {</span>
+      <span class="ln">42</span><span class="tx">                  await process(x)</span>
+      <span class="ln">43</span><span class="tx">                }</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="caseLabel">压测3 — 超长文件路径（IN 行溢出）</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">packages/client/ui-conversation/src/client/contract/terminal-card-model.ts <span class="r-cwd">1–3</span></span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln">1</span><span class="tx">import { clsx } from 'clsx'</span>
+      <span class="ln">2</span><span class="tx">import type { TerminalBlockProps } from '@deepseek-ai/dsh-client-ui-primitives'</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="caseLabel">压测4 — 多文件 diff（文件头分隔，行号各文件独立）</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">3 files</span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll cap">
+        <span class="ln"></span><span class="tx"><span class="s-file">src/config.ts</span></span>
+      <span class="ln diff-del">3</span><span class="tx diff-del">const PORT = 3000</span>
+      <span class="ln diff-add">3</span><span class="tx diff-add">const PORT = 8080</span>
+      <span class="ln"></span><span class="tx"><span class="s-file">src/server.ts</span></span>
+      <span class="ln diff-del">12</span><span class="tx diff-del">app.listen(3000)</span>
+      <span class="ln diff-add">12</span><span class="tx diff-add">app.listen(PORT)</span>
+      <span class="ln"></span><span class="tx"><span class="s-file">README.md</span></span>
+      <span class="ln diff-add">5</span><span class="tx diff-add">Default port is now 8080.</span>
+      <span class="ln"></span><span class="tx"><span class="diff-foot">+3 -2 · 3 files</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="caseLabel">压测5 — 运行中（蓝灯 chase），输出流式增长</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="matrix"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="tx tx-in"><span class="r-cwd">~</span> pnpm build</span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln"></span><span class="tx">> tsc -b</span>
+      <span class="ln"></span><span class="tx">Building packages/core...</span>
+      <span class="ln"></span><span class="tx">Building packages/llm...</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="caseLabel">压测6 — 空输出（cd/export 类，OUT 段塌缩为双线）</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in"><span class="r-cwd">~</span> export NODE_ENV=production</span>
+      </div>
+    </div><div class="seg seg-out" style="min-height:0;padding:0"></div>
+  </div>
+
+  <div class="caseLabel">压测7 — 中文/emoji 混排（等宽字体下 CJK 占双宽，对齐考验）</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in"><span class="r-cwd">~</span> node scripts/报告.mjs</span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln"></span><span class="tx">✓ 测试通过 42/42</span>
+      <span class="ln"></span><span class="tx">⚠ 警告：3 处 TODO 未处理</span>
+      <span class="ln"></span><span class="tx">耗时 1.2s 🎉</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="caseLabel" style="color:var(--dsw-alias-state-warn-primary)">压测8 — 500 行 × 500 字符大文件（read / write / edit，双向滚动 + 行号自适应）</div>
+  <div class="caseLabel">read 500×500</div>
+  <div class="toolcard" id="big-read"></div>
+  <div class="caseLabel">write 500×500（全新文件，全绿加）</div>
+  <div class="toolcard" id="big-write"></div>
+  <div class="caseLabel">edit 500×500（散布若干处红删绿加 + 上下文行）</div>
+  <div class="toolcard" id="big-edit"></div>
+
+  <div class="caseLabel" style="color:var(--dsw-alias-state-warn-primary)">压测9 — 大输入（IN 段自身超高：固定高度内部滚动，灯钉外壳不随内容滚）</div>
+  <div class="caseLabel">bash 运行整个 Python 文件（heredoc，IN 段 ~200 行代码滚动）</div>
+  <div class="toolcard" id="big-in-py"></div>
+  <div class="caseLabel">write 大 content（IN=完整新文件内容，滚动）</div>
+  <div class="toolcard" id="big-in-write"></div>
+  <div class="caseLabel">大 args JSON（generic 兜底，IN=几百行嵌套 JSON 滚动）</div>
+  <div class="toolcard" id="big-in-json"></div>
+  <div class="caseLabel">大 IN + 大 OUT 同时（两段各自固定高度滚动）</div>
+  <div class="toolcard" id="big-in-out"></div>
+
+  <div class="caseLabel">read 失败 — 红灯 + pill</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln lamp"><span class="dot dot-error"></span></span><span class="tx tx-in">missing.ts<span class="pill err">FS_NOT_FOUND</span></span>
+      </div>
+    </div><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll">
+        <span class="ln"></span><span class="tx"><span class="err-txt">no such file or directory: missing.ts</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 两条路：工具自写组件 vs generic 兜底 ================= -->
+  <div class="phase">两条路 — 工具自写组件<span class="tag-own">主路·组合任意 React</span> vs generic 零代码<span class="tag-fallback">兜底</span>（无中央 render-kind 联合）</div>
+
+  <div class="caseLabel">纯 OUT 无 IN — 只有 OUT 段，灯挂 OUT 行（generic console dump）</div>
+  <div class="toolcard"><div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+    <div class="scroll"><span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx">[server] listening on :3000</span></div>
+  </div></div>
+
+  <div class="caseLabel">纯 IN 无 OUT — 纯副作用工具：只有 IN 段、无 OUT 段</div>
+  <div class="toolcard"><div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+    <div class="scroll"><span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">set_status(busy)</span></div>
+  </div></div>
+
+  <div class="caseLabel">同一个 deploy 工具 — 上：<span class="tag-fallback">generic 兜底</span>（IN=args JSON / OUT=文本，零代码）</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">{ "env": "prod", "version": "1.2.3", "replicas": 3 }</span></div></div>
+    <div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln"></span><span class="tx">Deploying to prod... Done: https://prod.example.com</span></div></div>
+  </div>
+
+  <div class="caseLabel">下：<span class="tag-own">deploy 自己写的组件</span>——在 Segment 里组合任意 React（一个 &lt;dl&gt; 摘要、一个 &lt;a&gt; 链接），无需任何中央 render-kind</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx"><dl class="kv"><dt>环境</dt><dd>prod</dd><dt>版本</dt><dd>1.2.3</dd><dt>副本</dt><dd>3</dd></dl></span></div></div>
+    <div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln"></span><span class="tx">Deploying to prod... Done (12.4s)</span></div></div>
+    <div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln"></span><span class="tx"><a class="lnk" href="#">🔗 访问部署 · prod.example.com</a></span></div></div>
+  </div>
+
+  <div class="caseLabel">工具组件可渲染任意内容 — 图片（一个 &lt;img&gt; 塞进 OUT Segment）</div>
+  <div class="toolcard"><div class="group">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">screenshot(fullPage)</span></div></div>
+    <div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln"></span><span class="tx"><div class="imgph">[ 截图 1280×720 ]</div></span></div></div>
+  </div></div>
+
+  <div class="caseLabel">工具组件可渲染任意内容 — 表格（一个 &lt;table&gt; 塞进 OUT Segment）</div>
+  <div class="toolcard"><div class="group">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln lamp"><span class="dot dot-done"></span></span><span class="tx tx-in">query("SELECT * FROM users LIMIT 2")</span></div></div>
+    <div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln"></span><span class="tx"><table class="rkt"><tr><th>id</th><th>name</th><th>role</th></tr><tr><td>1</td><td>Alice</td><td>admin</td></tr><tr><td>2</td><td>Bob</td><td>user</td></tr></table></span></div></div>
+  </div></div>
+
+  <!-- 运行时状态形态：真实但逐行为延后 -->
+  <div class="phase">运行时状态形态 — seam 不阻断，逐行为随各自的 PR 落地<span class="tag-defer">逐行为延后</span></div>
+
+  <div class="caseLabel">中途取消 — 黄灯 + 部分输出</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln lamp"><span class="dot dot-warn"></span></span><span class="tx tx-in"><span class="r-cwd">~</span> npm run watch<span class="pill wn">cancelled</span></span></div></div>
+    <div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln"></span><span class="tx">watching for changes...
+[已取消，共运行 8.2s]</span></div></div>
+  </div>
+
+  <div class="caseLabel">权限被拒 — 红灯 + denial 文本</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln lamp"><span class="dot dot-error"></span></span><span class="tx tx-in"><span class="r-cwd">~</span> curl https://api.x.com<span class="pill err">denied</span></span></div></div>
+    <div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln"></span><span class="tx"><span class="err-txt">[sandbox] 拒绝：需要 network 权限。升级后重试。</span></span></div></div>
+  </div>
+
+  <div class="caseLabel">需审批 — 执行前交互态，是 ask_user_question 那类工具自己的交互组件（不是结果卡片）</div>
+  <div class="toolcard">
+    <div class="seg seg-in"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln lamp"><span class="dot dot-neutral"></span></span><span class="tx tx-in"><span class="r-cwd">~</span> rm -rf ./dist</span></div></div>
+    <div class="seg seg-out"><div class="seg-tools"><button class="seg-btn" title="侧边预览">⤢</button><button class="seg-btn">复制</button></div>
+      <div class="scroll"><span class="ln"></span><span class="tx"><div class="notice warn">⚠ 该命令会删除文件，需要确认</div><div class="btnrow"><button class="btn primary">批准</button><button class="btn">拒绝</button></div></span></div></div>
+  </div>
+
+</div>
+</body>
+</html>

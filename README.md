@@ -44,4 +44,6 @@ Proposed. This is a design document, not an implementation.
 
 ## Context
 
-This note was written against a private codebase, and its arguments cite that codebase's file paths and line numbers as evidence. Those references are preserved verbatim because they are load-bearing to the reasoning, but they will not resolve from this repository. The design itself is independent of them.
+The note's arguments cite source files and line numbers as evidence. Those citations link to [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness), pinned to commit [`47f9438`](https://github.com/deepseek-ai/deepseek-harness/tree/47f943859bef60e4160492346772ded9b24f765a) so the line anchors stay accurate as that repository advances.
+
+The note was originally written against an internal checkout whose package layout differed, so paths were remapped when the citations were repointed: `packages/bash/*` and `packages/pty/tool-bash-persistent` are now under `packages/shell/`, `packages/pty/tool-pty` is now `packages/terminal/tool-terminal`, and `packages/self-modification/tool-cordis` is now under `packages/extensions/`. One citation — a `history-fold.ts` line supporting the client-synthesised `interrupted` code — was dropped because that file no longer exists; the surrounding claim stands on its own.

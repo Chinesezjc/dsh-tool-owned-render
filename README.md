@@ -38,9 +38,23 @@ The two paths — a tool composing its own React, versus the generic zero-code f
 
 ![two paths](screenshots/03-two-paths.png)
 
+## The implementation
+
+`src/` is a working DSH client plugin built on this design: primitives (`ToolCard`/`Segment`/`Group`), the observation-derived lamp, and registrants that take over the keyed `tool.call.toolview` slot for `read`, `bash`, `write`/`edit`, `grep`/`glob` and `web_search`/`web_fetch`.
+
+[`PLUGIN.md`](PLUGIN.md) documents it: what each registrant renders, install and layering, takeover semantics, and the four things that need host changes and cannot be done from a plugin.
+
+```sh
+npm install
+npm test          # 69 unit tests
+npx tsdown        # build lib/client.js
+```
+
+Every card was verified against a real server and a real model round, not only in unit tests.
+
 ## Status
 
-Proposed. This is a design document, not an implementation.
+The design note is a proposal. The plugin in `src/` implements the client-side half of it and runs; the host-side changes the note asks for are not part of it, and [`PLUGIN.md`](PLUGIN.md) lists them explicitly.
 
 ## Context
 

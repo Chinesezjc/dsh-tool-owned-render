@@ -1,0 +1,327 @@
+/* Layout primitives for tool-owned render, matching the design prototype.
+
+   The load-bearing structure: each Segment's scroll area is a two-column grid,
+   `[gutter][text]`. The gutter is role-exclusive — an IN segment puts the LAMP
+   there, an OUT segment puts LINE NUMBERS there — so the lamp and the line
+   numbers occupy the same column and align vertically. There is no separate
+   title bar and no textual IN/OUT label.
+
+   Colors come from the shell's own design tokens with prototype fallbacks. */
+
+.card {
+  /* One gutter width for the whole card, so the IN lamp cell and every OUT
+     line-number cell share a column and the text edges line up. The prototype
+     measures its widest .ln at runtime and sets max(26px, that); the same
+     result is reachable statically because the widest line number is known:
+     28px for no numbers or one digit, +8px per extra digit. Registrants
+     override it through --gutter when they render numbered lines. */
+  --gutter: 28px;
+  margin: 0;
+  background: var(--dsw-alias-markdown-code-block, #f9fafb);
+  border-radius: var(--dsl-radius, 12px);
+  overflow: hidden;
+  font: var(--dsw-font-markdown-code-block, 13px/22px var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace));
+  color: var(--dsw-alias-label-primary, #0f1115);
+}
+
+/* Segment shell: does not scroll. Positioning parent for the hover tools. */
+.seg { position: relative; }
+
+/* OUT is separated from IN by a rule, not by a gap. */
+.segOut { border-top: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.1)); }
+
+/* The scroll area: the two-column grid that makes gutter and text align.
+   Native scrollbars themed through a token pair — transparent at rest, tinted
+   while the pointer is over this segment, so nothing shifts on hover. */
+.scroll {
+  overflow: auto;
+  display: grid;
+  grid-template-columns: var(--gutter, max-content) minmax(0, 1fr);
+  align-content: start;
+  padding: 8px 0;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsh-scrollbar-thumb, transparent) transparent;
+}
+
+.scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll::-webkit-scrollbar-thumb { background: var(--dsh-scrollbar-thumb, transparent); border-radius: 4px; }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+
+.seg:hover .scroll,
+.seg:focus-within .scroll { --dsh-scrollbar-thumb: var(--dsh-scrollbar-thumb-hover, #81858c); }
+
+/* Chat-row height cap; the details panel shows the rest. */
+.cap { max-height: 132px; }
+
+/* Gutter column. OUT: line numbers, right-aligned. IN: the lamp, left-aligned. */
+.ln {
+  grid-column: 1;
+  text-align: right;
+  padding: 0 8px 0 12px;
+  color: var(--dsw-alias-label-caption, #adb2b8);
+  user-select: none;
+  line-height: var(--dsl-lh, 22px);
+  white-space: nowrap;
+}
+
+.lampCell {
+  text-align: left;
+  padding-left: 10px;
+  padding-right: 8px;
+}
+
+/* Text column. */
+.tx {
+  grid-column: 2;
+  padding-right: 14px;
+  white-space: pre;
+  line-height: var(--dsl-lh, 22px);
+  color: var(--dsw-alias-label-secondary, #61666b);
+}
+
+/* An IN line reads as primary text and leaves room for the hover tools. */
+.txIn {
+  color: var(--dsw-alias-label-primary, #0f1115);
+  padding-right: 56px;
+}
+
+/* Secondary detail inside an IN line (a line range, a cwd). */
+.meta { color: var(--dsw-alias-label-tertiary, #81858c); }
+
+/* The lamp (StateDot): a faint ring plus a solid core, both currentColor. */
+.dot {
+  position: relative;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  vertical-align: middle;
+}
+
+.dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentcolor;
+  opacity: 0.1;
+}
+
+.dot::after {
+  content: "";
+  position: absolute;
+  inset: 20%;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.dotOk { color: var(--dsw-alias-state-success-primary, #22c55e); }
+.dotError { color: var(--dsw-alias-state-error-primary, #ec1313); }
+.dotWarn { color: var(--dsw-alias-state-warn-primary, #f59e0b); }
+.dotNeutral { color: var(--dsw-alias-label-caption, #adb2b8); }
+
+/* Running: the eight-cell chase, in the brand blue. */
+.matrix {
+  position: relative;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  color: var(--dsw-static-deepseek-450, #5686fe);
+  vertical-align: middle;
+}
+
+.matrix i {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: currentcolor;
+  opacity: 0.15;
+  animation: chase 1s infinite;
+}
+
+.matrix i:nth-child(1) { left: 0; top: 0; animation-delay: -1000ms; }
+.matrix i:nth-child(2) { left: 4px; top: 0; animation-delay: -875ms; }
+.matrix i:nth-child(3) { left: 8px; top: 0; animation-delay: -750ms; }
+.matrix i:nth-child(4) { left: 8px; top: 4px; animation-delay: -625ms; }
+.matrix i:nth-child(5) { left: 8px; top: 8px; animation-delay: -500ms; }
+.matrix i:nth-child(6) { left: 4px; top: 8px; animation-delay: -375ms; }
+.matrix i:nth-child(7) { left: 0; top: 8px; animation-delay: -250ms; }
+.matrix i:nth-child(8) { left: 0; top: 4px; animation-delay: -125ms; }
+
+@keyframes chase {
+  0%, 12.4% { opacity: 1; }
+  12.5%, 24.9% { opacity: 0.6; }
+  25%, 37.4% { opacity: 0.35; }
+  37.5%, 100% { opacity: 0.15; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .matrix i { animation: none; opacity: 0.55; }
+}
+
+/* Status pill trailing an IN line (an exit code, a byte count). */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  background: var(--dsw-alias-bg-layer-2, #fff);
+  font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.pillError { color: var(--dsw-alias-state-error-primary, #ec1313); }
+.pillWarn { color: var(--dsw-alias-state-warn-primary, #f59e0b); }
+
+/* Per-segment controls: pinned to the shell's top-right, revealed on hover,
+   and never scrolling with the content. */
+.segTools {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.seg:hover .segTools,
+.segTools:focus-within { opacity: 1; }
+
+.segBtn {
+  color: var(--dsw-alias-label-secondary, #61666b);
+  font: var(--dsw-font-xs-13, 13px/20px var(--dsw-font-family, sans-serif));
+  background: var(--dsw-alias-markdown-code-block, #f9fafb);
+  border: none;
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.segBtn:hover { background: var(--dsw-alias-bg-layer-2, #fff); }
+
+/* Group: several executions under one card, separated by a rule. */
+.group + .group { border-top: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.1)); }
+
+/* An image OUT segment spans the text column and scales to fit. */
+.image {
+  grid-column: 2;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  padding-right: 14px;
+}
+
+.subtle {
+  grid-column: 2;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  font-style: italic;
+  line-height: var(--dsl-lh, 22px);
+  padding-right: 14px;
+}
+
+/* Error-toned body text in a failure's OUT segment. */
+.errText { color: var(--dsw-alias-state-error-primary, #ec1313); }
+
+/* Header row: the whole line is the disclosure toggle. */
+.headRow { display: block; }
+
+.toggle { cursor: pointer; }
+
+.toggle:focus-visible {
+  outline: 2px solid var(--dsw-static-deepseek-450, #5686fe);
+  outline-offset: -2px;
+  border-radius: var(--dsl-radius, 12px);
+}
+
+/* The chevron REPLACES the lamp on hover rather than sitting beside it: the
+   gutter column is shared with the OUT segment's line numbers, so widening it
+   here would break the alignment the whole layout rests on. Absolute
+   positioning keeps the chevron out of the grid's width computation. */
+.lampCell { position: relative; }
+
+.chevron {
+  /* The lamp is a 10px box whose left edge sits at the cell's 10px padding, so
+     its centre is at left:15px. Pin the 14px icon box by its own centre to that
+     exact point, rather than centring a larger icon inside a smaller box. */
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  display: block;
+  color: var(--dsw-alias-label-tertiary, #81858c);
+  opacity: 0;
+  /* Collapsed points right; expanding turns it down. The icon ships pointing
+     down, so the collapsed state is the rotated one. */
+  transform: rotate(-90deg);
+  transform-origin: center;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+/* The icon is 14px inside a 10px cell; let it overflow symmetrically rather
+   than shrink, so its optical centre stays on the lamp's centre. */
+.chevron svg {
+  display: block;
+  flex: none;
+}
+
+/* Hover swaps lamp for chevron; expanded keeps the chevron turned down.
+   Each selector stays on one line — the multi-line comma form mis-minified. */
+.card:hover .lampCell .dot { opacity: 0; }
+.card:hover .lampCell .matrix { opacity: 0; }
+.card:hover .chevron { opacity: 1; }
+.card[data-open='true'] .lampCell .dot { opacity: 0; }
+.card[data-open='true'] .lampCell .matrix { opacity: 0; }
+.card[data-open='true'] .chevron { opacity: 1; transform: rotate(0deg); }
+.dot { transition: opacity 0.12s ease; }
+.matrix { transition: opacity 0.12s ease; }
+
+/* A multi-line IN segment scrolls inside a fixed height like an OUT segment.
+   Its lamp cannot ride the gutter — the gutter would scroll away with the
+   content — so it is pinned to the segment shell, aligned to the first row. */
+.segLamp {
+  position: absolute;
+  left: 10px;
+  top: 16px;
+  transform: translateY(-50%);
+  z-index: 3;
+}
+
+/* Copy feedback: the label itself changes, so only the tone shifts here. */
+.segBtn[data-state='done'] { color: var(--dsw-alias-state-success-primary, #22c55e); }
+.segBtn[data-state='failed'] { color: var(--dsw-alias-state-error-primary, #ec1313); }
+
+/* Diff rows: the changed line's NUMBER carries the colour, in the gutter, so no
+   +/- prefix is needed and the body text stays selectable as real content. */
+.diffDel { color: var(--dsw-alias-state-error-primary, #ec1313); }
+.diffAdd { color: var(--dsw-alias-state-success-primary, #22c55e); }
+.diffFoot { color: var(--dsw-alias-label-tertiary, #81858c); }
+.diffFile { color: var(--dsw-alias-label-primary, #0f1115); }
+
+/* Change counts trailing a summary line: the additions green, the deletions
+   red, at the same weight as the read window's line range. */
+.statAdd { color: var(--dsw-alias-state-success-primary, #22c55e); }
+.statDel { color: var(--dsw-alias-state-error-primary, #ec1313); }
+
+/* Source links and fetched URLs, in the brand blue. */
+.link {
+  color: var(--dsw-static-deepseek-450, #5686fe);
+  text-decoration: none;
+}
+
+.link:hover { text-decoration: underline; }
+
+/* HTTP status in a fetch card's status segment. */
+.statusOk { color: var(--dsw-alias-state-success-primary, #22c55e); }
+.statusBad { color: var(--dsw-alias-state-error-primary, #ec1313); }
+
+/* A row that wraps instead of scrolling horizontally — a prose answer, not code. */
+.wrap { white-space: normal; }

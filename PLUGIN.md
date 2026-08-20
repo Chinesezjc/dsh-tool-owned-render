@@ -78,9 +78,15 @@ This is the client-side half of the design. Four things need host changes and ar
 ## Development
 
 ```sh
-npm install
+npm ci            # installs from package-lock.json
 npm test          # 69 unit tests
-npx tsdown        # build lib/client.js
+npm run typecheck
+npm run bundle    # build lib/index.js, lib/index.d.ts, lib/client.js
 ```
+
+`npm ci` rather than `npm install`: the client packages this plugin builds
+against are pre-release, and their peer ranges (`^0.1.0-rc.8`) resolve forward
+across the whole `@deepseek-ai/dsh-client-*` set. Installing without the
+lockfile lets those peers drift apart into an unsatisfiable graph.
 
 The `web-row` tests were each checked with a negative control — the assertion was confirmed to fail against a deliberately broken implementation before being kept.

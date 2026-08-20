@@ -45,9 +45,9 @@ The two paths — a tool composing its own React, versus the generic zero-code f
 [`PLUGIN.md`](PLUGIN.md) documents it: what each registrant renders, install and layering, takeover semantics, and the four things that need host changes and cannot be done from a plugin.
 
 ```sh
-npm install
+npm ci            # installs from package-lock.json
 npm test          # 69 unit tests
-npx tsdown        # build lib/client.js
+npm run bundle    # build lib/index.js, lib/index.d.ts, lib/client.js
 ```
 
 Every card was verified against a real server and a real model round, not only in unit tests.

@@ -36,6 +36,9 @@ const client: UserConfig = {
   outDir: 'lib',
   format: 'cjs',
   platform: 'browser',
+  // No dts: this artifact is a side-effecting browser script wrapped in a
+  // `window.__ModuleLoader__.load()` call, located by the host's client-modules
+  // scanner. It is not importable, so it has no type entry to publish.
   dts: false,
   sourcemap: true,
   clean: false,
@@ -102,7 +105,8 @@ const lib: UserConfig = {
   platform: 'node',
   target: 'es2024',
   fixedExtension: false,
-  dts: false,
+  // The node half is the package's importable entry, so it ships types.
+  dts: true,
   clean: false,
 }
 

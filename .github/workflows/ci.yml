@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      # `npm ci` installs strictly from the lockfile and fails on a peer
+      # conflict rather than resolving around it. The rc.6 dependency set this
+      # package shipped with failed here with ERESOLVE, which is why the lane
+      # exists.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run bundle
+
+      # The build must actually produce every file `package.json` points at.
+      # A `types` or `exports` entry naming a path the build never emits is a
+      # broken published package, so assert the paths instead of trusting them.
+      - name: Assert declared entry points exist
+        run: |
+          set -eu
+          for f in lib/index.js lib/index.d.ts lib/client.js; do
+            test -f "$f" || { echo "missing declared artifact: $f" >&2; exit 1; }
+          done
+          echo "all declared artifacts present"
+
+      # Packs the tarball npm would publish and prints its contents, so a
+      # `files` entry that matches nothing is visible in the log.
+      - name: Pack (dry run)
+        run: npm publish --dry-run
